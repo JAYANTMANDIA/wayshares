@@ -1,0 +1,299 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uberx-f64cc/firestore.schema.json",
+  "title": "UberX Firestore Data Model",
+  "schemaVersion": 1,
+  "projectId": "uberx-f64cc",
+  "database": "(default)",
+  "notes": [
+    "Firestore has collections and documents rather than SQL tables.",
+    "Collections are created automatically when their first document is written.",
+    "All timestamps are Firestore Timestamp values. Server-managed collections are written by the API/Admin SDK.",
+    "Empty project collections were initialized with a schema_placeholder_v1 document containing schemaOnly=true and safeToDelete=true; these are not operational records."
+  ],
+  "collections": {
+    "users": {
+      "documentId": "Firebase Authentication UID",
+      "status": "active",
+      "managedBy": "server",
+      "description": "Rider and driver profile. Verification flags are never client writable.",
+      "required": ["id", "fullName", "email", "phoneNumber", "userRole", "verificationStatus", "createdAt", "updatedAt"],
+      "fields": {
+        "id": "string",
+        "fullName": "string",
+        "email": "string",
+        "phoneNumber": "string",
+        "profilePhoto": "string",
+        "city": "string",
+        "userRole": "passenger | driver | dual | admin",
+        "verificationStatus": "unverified | pending | verified | rejected",
+        "rcVerified": "boolean",
+        "rcNumber": "string|null; store only as required and restrict access",
+        "rating": "number",
+        "totalTrips": "integer",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      }
+    },
+    "drivers": {
+      "documentId": "driver ID",
+      "status": "planned",
+      "managedBy": "server",
+      "description": "Driver onboarding and review state; do not store raw identity documents here.",
+      "required": ["id", "userId", "verificationStatus", "createdAt"],
+      "fields": {
+        "id": "string",
+        "userId": "Firebase Authentication UID",
+        "verificationStatus": "unverified | pending | verified | rejected",
+        "rating": "number",
+        "totalTrips": "integer",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      }
+    },
+    "vehicles": {
+      "documentId": "vehicle ID",
+      "status": "planned",
+      "managedBy": "server",
+      "description": "Driver vehicles and verification status.",
+      "required": ["id", "driverId", "make", "model", "registrationNumber", "seatingCapacity", "verificationStatus"],
+      "fields": {
+        "id": "string",
+        "driverId": "Firebase Authentication UID",
+        "vehicleType": "string",
+        "make": "string",
+        "model": "string",
+        "registrationNumber": "string",
+        "color": "string",
+        "seatingCapacity": "integer",
+        "luggageCapacity": "string",
+        "verificationStatus": "unverified | pending | verified | rejected",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      }
+    },
+    "rides": {
+      "documentId": "generated ride ID",
+      "status": "active",
+      "managedBy": "server",
+      "description": "Published rides with server-controlled lifecycle and seat inventory.",
+      "required": ["id", "driverId", "fromCity", "toCity", "departureDate", "departureTime", "availableSeats", "totalSeats", "pricePerSeat", "status", "createdAt"],
+      "fields": {
+        "id": "string",
+        "driverId": "Firebase Authentication UID",
+        "driverName": "string",
+        "driverPhoto": "string",
+        "vehicleId": "string",
+        "vehicleMakeModel": "string",
+        "vehicleRegNumber": "string",
+        "fromCity": "string",
+        "toCity": "string",
+        "pickupLocation": "string",
+        "dropLocation": "string",
+        "departureDate": "string; migrate to timestamp for production scheduling",
+        "departureTime": "string; migrate to timestamp for production scheduling",
+        "availableSeats": "integer",
+        "totalSeats": "integer",
+        "occupiedSeats": "array<integer>",
+        "pricePerSeat": "number; INR",
+        "status": "UPCOMING | DRIVER_ON_WAY | ARRIVING | STARTED | COMPLETED | CANCELLED",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      }
+    },
+    "bookings": {
+      "documentId": "generated booking ID",
+      "status": "active",
+      "managedBy": "server",
+      "description": "Seat reservation, payment state, and passenger/ride snapshot.",
+      "required": ["id", "rideId", "passengerId", "selectedSeats", "amount", "bookingStatus", "paymentStatus", "bookingReference", "createdAt"],
+      "fields": {
+        "id": "string",
+        "rideId": "string",
+        "passengerId": "Firebase Authentication UID",
+        "selectedSeats": "array<integer>",
+        "seatsBooked": "integer",
+        "amount": "number; INR",
+        "bookingStatus": "PENDING | CONFIRMED | CANCELLED | COMPLETED",
+        "paymentStatus": "PENDING | PAID | FAILED | REFUND_PENDING | REFUNDED",
+        "bookingReference": "string",
+        "razorpayOrderId": "string",
+        "razorpayPaymentId": "string",
+        "reservationExpiresAt": "timestamp",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      }
+    },
+    "payments": {
+      "documentId": "booking ID",
+      "status": "active",
+      "managedBy": "server/webhook",
+      "description": "Provider transaction ledger; never accept client-supplied success state.",
+      "required": ["bookingId", "userId", "amount", "provider", "status", "createdAt"],
+      "fields": {
+        "bookingId": "string",
+        "userId": "Firebase Authentication UID",
+        "amount": "number; INR",
+        "provider": "razorpay",
+        "providerOrderId": "string",
+        "providerPaymentId": "string",
+        "providerRefundId": "string",
+        "status": "PENDING | SUCCESS | FAILED | REFUND_PENDING | REFUNDED",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      }
+    },
+    "verificationRequests": {
+      "documentId": "generated request ID",
+      "status": "active",
+      "managedBy": "server/admin review",
+      "description": "KYC workflow metadata only. Raw document numbers/files require a dedicated secure provider/storage flow.",
+      "required": ["id", "userId", "documentType", "status", "createdAt"],
+      "fields": {
+        "id": "string",
+        "userId": "Firebase Authentication UID",
+        "documentType": "rc | pan | aadhaar | license",
+        "status": "PENDING | VERIFIED | REJECTED | REMOVAL_REQUESTED",
+        "reviewerId": "Firebase Authentication UID|null",
+        "createdAt": "timestamp",
+        "reviewedAt": "timestamp|null"
+      }
+    },
+    "scheduledRides": {
+      "documentId": "generated request ID",
+      "status": "active",
+      "managedBy": "server",
+      "description": "Unassigned future ride requests; not a confirmed booking or payment.",
+      "required": ["id", "reference", "userId", "pickupPoint", "toCity", "scheduledDate", "scheduledTime", "requestStatus", "createdAt"],
+      "fields": {
+        "id": "string",
+        "reference": "string",
+        "userId": "Firebase Authentication UID",
+        "fromCity": "string",
+        "pickupPoint": "string",
+        "toCity": "string",
+        "scheduledDate": "string; migrate to timestamp for production scheduling",
+        "scheduledTime": "string; migrate to timestamp for production scheduling",
+        "flightNote": "string",
+        "remindPrior": "boolean",
+        "requestStatus": "REQUESTED | ASSIGNED | CANCELLED",
+        "paymentStatus": "NOT_DUE | PENDING | PAID | REFUNDED",
+        "createdAt": "timestamp"
+      }
+    },
+    "reviews": {
+      "documentId": "generated review ID",
+      "status": "planned",
+      "managedBy": "server",
+      "description": "Post-trip driver ratings and passenger comments.",
+      "required": ["id", "rideId", "reviewerId", "driverId", "rating", "createdAt"],
+      "fields": {
+        "id": "string",
+        "rideId": "string",
+        "reviewerId": "Firebase Authentication UID",
+        "driverId": "Firebase Authentication UID",
+        "rating": "integer; 1-5",
+        "comment": "string",
+        "tags": "array<string>",
+        "createdAt": "timestamp"
+      }
+    },
+    "tracking": {
+      "documentId": "ride ID",
+      "status": "planned",
+      "managedBy": "server/driver device",
+      "description": "Latest location snapshot; production location retention policy required.",
+      "required": ["rideId", "driverId", "latitude", "longitude", "currentStatus", "updatedAt"],
+      "fields": {
+        "rideId": "string",
+        "driverId": "Firebase Authentication UID",
+        "latitude": "number",
+        "longitude": "number",
+        "progressPercent": "number",
+        "currentStatus": "RideStatus",
+        "etaMinutes": "integer",
+        "updatedAt": "timestamp"
+      }
+    },
+    "chatConversations": {
+      "documentId": "generated conversation ID",
+      "status": "planned",
+      "managedBy": "server",
+      "description": "Private ride conversation; messages should be stored in a messages subcollection.",
+      "required": ["id", "rideId", "participantIds", "createdAt"],
+      "fields": {
+        "id": "string",
+        "rideId": "string",
+        "participantIds": "array<Firebase Authentication UID>",
+        "lastMessageAt": "timestamp",
+        "createdAt": "timestamp"
+      },
+      "subcollections": {
+        "messages": {
+          "required": ["senderId", "text", "createdAt"],
+          "fields": { "senderId": "Firebase Authentication UID", "text": "string", "createdAt": "timestamp" }
+        }
+      }
+    },
+    "safetyContacts": {
+      "documentId": "generated contact ID",
+      "status": "planned",
+      "managedBy": "server",
+      "description": "Trusted contacts scoped to one user.",
+      "required": ["id", "userId", "contactName", "phoneNumber"],
+      "fields": {
+        "id": "string",
+        "userId": "Firebase Authentication UID",
+        "contactName": "string",
+        "phoneNumber": "string",
+        "relationship": "string",
+        "createdAt": "timestamp"
+      }
+    },
+    "notifications": {
+      "documentId": "generated notification ID",
+      "status": "planned",
+      "managedBy": "server",
+      "description": "In-app notification records scoped to one user.",
+      "required": ["id", "userId", "title", "message", "read", "createdAt"],
+      "fields": {
+        "id": "string",
+        "userId": "Firebase Authentication UID",
+        "title": "string",
+        "message": "string",
+        "type": "booking | driver | payment | safety | system",
+        "read": "boolean",
+        "createdAt": "timestamp"
+      }
+    },
+    "supportTickets": {
+      "documentId": "generated ticket ID",
+      "status": "planned",
+      "managedBy": "server/admin",
+      "description": "Support requests and operational resolution state.",
+      "required": ["id", "userId", "category", "message", "status", "createdAt"],
+      "fields": {
+        "id": "string",
+        "userId": "Firebase Authentication UID",
+        "category": "string",
+        "message": "string",
+        "status": "OPEN | IN_PROGRESS | RESOLVED",
+        "createdAt": "timestamp",
+        "updatedAt": "timestamp"
+      }
+    },
+    "backendSmokeTests": {
+      "documentId": "generated test ID",
+      "status": "test-only",
+      "managedBy": "developer tooling",
+      "description": "Connectivity test records; safe to delete.",
+      "fields": {
+        "purpose": "string",
+        "projectId": "string",
+        "createdAt": "timestamp",
+        "deleteAfter": "timestamp",
+        "safeToDelete": "boolean"
+      }
+    }
+  }
+}

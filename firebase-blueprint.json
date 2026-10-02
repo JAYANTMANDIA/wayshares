@@ -1,0 +1,198 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered user profile for passenger, driver, or admin.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string", "maxLength": 100 },
+        "phoneNumber": { "type": "string", "maxLength": 20 },
+        "email": { "type": "string", "format": "email", "maxLength": 100 },
+        "profilePhoto": { "type": "string" },
+        "gender": { "type": "string", "enum": ["male", "female", "other", "prefer_not_to_say"] },
+        "age": { "type": "number" },
+        "city": { "type": "string", "maxLength": 100 },
+        "collegeOrOrganization": { "type": "string", "maxLength": 150 },
+        "verificationStatus": { "type": "string", "enum": ["unverified", "pending", "verified", "rejected"] },
+        "userRole": { "type": "string", "enum": ["passenger", "driver", "dual", "admin"] },
+        "rating": { "type": "number" },
+        "totalTrips": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "fullName", "phoneNumber", "userRole"]
+    },
+    "Driver": {
+      "title": "Driver",
+      "description": "Driver profile and verification records.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "drivingLicense": { "type": "string", "maxLength": 50 },
+        "verificationStatus": { "type": "string", "enum": ["unverified", "pending", "verified", "rejected"] },
+        "rating": { "type": "number" },
+        "totalTrips": { "type": "number" }
+      },
+      "required": ["id", "userId", "verificationStatus"]
+    },
+    "Vehicle": {
+      "title": "Vehicle",
+      "description": "Driver vehicle specifications and capacity.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "driverId": { "type": "string" },
+        "vehicleType": { "type": "string" },
+        "make": { "type": "string" },
+        "model": { "type": "string" },
+        "registrationNumber": { "type": "string" },
+        "color": { "type": "string" },
+        "seatingCapacity": { "type": "number" },
+        "luggageCapacity": { "type": "string" },
+        "verificationStatus": { "type": "string" }
+      },
+      "required": ["id", "driverId", "model", "registrationNumber"]
+    },
+    "Ride": {
+      "title": "Ride",
+      "description": "Intercity carpool ride published by a driver.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "driverId": { "type": "string" },
+        "fromCity": { "type": "string" },
+        "toCity": { "type": "string" },
+        "pickupLocation": { "type": "string" },
+        "dropLocation": { "type": "string" },
+        "departureDate": { "type": "string" },
+        "departureTime": { "type": "string" },
+        "estimatedArrivalTime": { "type": "string" },
+        "availableSeats": { "type": "number" },
+        "totalSeats": { "type": "number" },
+        "pricePerSeat": { "type": "number" },
+        "luggageCapacity": { "type": "string" },
+        "vehicleId": { "type": "string" },
+        "status": { "type": "string", "enum": ["UPCOMING", "DRIVER_ON_WAY", "ARRIVING", "STARTED", "COMPLETED", "CANCELLED"] },
+        "routePolyline": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "driverId", "fromCity", "toCity", "departureDate", "departureTime", "pricePerSeat", "status"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Seat reservation for an intercity ride.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "rideId": { "type": "string" },
+        "passengerId": { "type": "string" },
+        "seatsBooked": { "type": "number" },
+        "selectedSeats": { "type": "array" },
+        "amount": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["PAID", "PENDING", "REFUNDED"] },
+        "bookingStatus": { "type": "string", "enum": ["CONFIRMED", "PENDING", "CANCELLED", "COMPLETED"] },
+        "bookingReference": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "rideId", "passengerId", "seatsBooked", "amount", "bookingStatus"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Payment transaction record for a booking.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "bookingId": { "type": "string" },
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "method": { "type": "string" },
+        "transactionId": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "bookingId", "userId", "amount", "status"]
+    },
+    "SafetyContact": {
+      "title": "SafetyContact",
+      "description": "Emergency contacts nominated by user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "contactName": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "relationship": { "type": "string" }
+      },
+      "required": ["id", "userId", "contactName", "phoneNumber"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification alert for ride updates and safety.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "title", "message"]
+    },
+    "SupportTicket": {
+      "title": "SupportTicket",
+      "description": "Customer support and safety complaints.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "category": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["OPEN", "IN_PROGRESS", "RESOLVED"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "category", "message", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles with role, verification, and credentials."
+    },
+    "/drivers/{driverId}": {
+      "schema": "Driver",
+      "description": "Driver documents, license verification, and history."
+    },
+    "/vehicles/{vehicleId}": {
+      "schema": "Vehicle",
+      "description": "Vehicle details, capacity, and registration."
+    },
+    "/rides/{rideId}": {
+      "schema": "Ride",
+      "description": "Publicly searchable and bookable intercity rides."
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Passenger ride seat bookings and reservation states."
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Payment records and transaction confirmations."
+    },
+    "/safetyContacts/{contactId}": {
+      "schema": "SafetyContact",
+      "description": "Emergency contacts configured for SOS broadcasts."
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User push and in-app notifications."
+    },
+    "/supportTickets/{ticketId}": {
+      "schema": "SupportTicket",
+      "description": "Support queries and safety alerts submitted to admin."
+    }
+  }
+}

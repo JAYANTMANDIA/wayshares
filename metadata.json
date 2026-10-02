@@ -1,0 +1,6 @@
+{
+  "name": "UberX",
+  "description": "Route-based carpooling and shared mobility platform for verified highway and city seat sharing, real-time tracking, and emergency safety.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
