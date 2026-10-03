@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { Express, Request, Response, NextFunction } from 'express';
 import { Timestamp } from 'firebase-admin/firestore';
-import { adminAuth, db, FieldValue } from './firebaseAdmin';
+import { adminAuth, db, FieldValue, firebaseAdminInitError } from './firebaseAdmin';
 
 type AuthRequest = Request & { uid: string; authEmail?: string; authPhone?: string; authEmailVerified?: boolean };
 
@@ -76,6 +76,9 @@ async function razorpayRequest<T>(endpoint: string, method: 'GET' | 'POST', body
 }
 
 async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (firebaseAdminInitError) {
+    return res.status(503).json({ success: false, error: firebaseAdminInitError });
+  }
   const authorization = req.header('authorization');
   const token = authorization?.startsWith('Bearer ') ? authorization.slice(7) : '';
   if (!token) return res.status(401).json({ success: false, error: 'Sign in to continue' });
@@ -180,7 +183,8 @@ export function registerApi(app: Express) {
   app.get('/api/health', (_req, res) => {
     res.json({
       status: 'ok', service: 'WAYSHARE Backend API', timestamp: new Date().toISOString(),
-      firebaseConfigured: Boolean(process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT),
+      firebaseConfigured: Boolean((process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT) && !firebaseAdminInitError),
+      firebaseAdminError: firebaseAdminInitError || undefined,
       razorpayConfigured: razorpayConfigured(),
       twilioConfigured: Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER),
       publicAppUrlConfigured: Boolean(getPublicAppUrl())
