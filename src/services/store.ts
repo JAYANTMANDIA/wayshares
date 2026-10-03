@@ -15,6 +15,7 @@ import {
   Review
 } from '../types';
 import { auth } from '../lib/firebase';
+import { readApiJson } from '../lib/apiJson';
 import { signOut } from 'firebase/auth';
 
 const STORAGE_KEYS = {
@@ -109,7 +110,7 @@ class UberXStore {
     if (filters?.date?.trim()) params.set('date', filters.date.trim());
     const query = params.toString();
     const response = await fetch(query ? `/api/rides?${query}` : '/api/rides', { headers });
-    const result = await response.json();
+    const result = await readApiJson<{ rides?: Ride[]; error?: string }>(response);
     if (!response.ok) throw new Error(result.error || 'Unable to load rides');
     const rides: Ride[] = Array.isArray(result.rides) ? result.rides : [];
     this.rides = rides;
@@ -297,7 +298,7 @@ class UberXStore {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${await firebaseUser.getIdToken()}` }
     });
-    const result = await response.json();
+    const result = await readApiJson<{ booking: Booking; error?: string }>(response);
     if (!response.ok) throw new Error(result.error || 'Unable to cancel booking');
     const updatedBooking = result.booking as Booking;
     this.bookings = this.bookings.map((booking) => booking.id === bookingId ? updatedBooking : booking);
@@ -341,7 +342,7 @@ class UberXStore {
       },
       body: JSON.stringify(rideData)
     });
-    const result = await response.json();
+    const result = await readApiJson<{ ride: Ride; error?: string }>(response);
     if (!response.ok) throw new Error(result.error || 'Unable to publish ride');
     const newRide = result.ride as Ride;
     this.rides = [newRide, ...this.rides.filter((ride) => ride.id !== newRide.id)];
@@ -360,7 +361,7 @@ class UberXStore {
       },
       body: JSON.stringify({ status })
     });
-    const result = await response.json();
+    const result = await readApiJson<{ status: RideStatus; error?: string }>(response);
     if (!response.ok) throw new Error(result.error || 'Unable to update ride');
     const ride = this.rides.find((r) => r.id === rideId);
     if (ride) {

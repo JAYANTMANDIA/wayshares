@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import express from 'express';
 import path from 'node:path';
 import { createServer as createViteServer } from 'vite';
+import { createExpressApp } from './backend/app';
 
 const localServerEnv = dotenv.config({ processEnv: {} }).parsed ?? {};
 for (const [key, value] of Object.entries(localServerEnv)) {
@@ -11,16 +12,11 @@ for (const [key, value] of Object.entries(localServerEnv)) {
 }
 
 async function startServer() {
-  const { registerApi } = await import('./backend/api');
-  const app = express();
+  const app = createExpressApp();
   const port = Number(process.env.PORT) || 3000;
   const publicHost = (() => {
     try { return new URL(process.env.APP_URL || '').hostname; } catch { return ''; }
   })();
-
-  app.use('/api/webhooks/razorpay', express.raw({ type: 'application/json' }));
-  app.use(express.json({ limit: '1mb' }));
-  registerApi(app);
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

@@ -1,4 +1,5 @@
 import { auth } from '../lib/firebase';
+import { readApiJson } from '../lib/apiJson';
 import type { Booking } from '../types';
 
 interface RazorpayCheckoutResponse {
@@ -41,7 +42,7 @@ async function apiRequest<T>(url: string, body: unknown): Promise<T> {
     },
     body: JSON.stringify(body)
   });
-  const result = await response.json();
+  const result = await readApiJson<T & { error?: string }>(response);
   if (!response.ok) throw new Error(result.error || 'Unable to complete payment');
   return result as T;
 }

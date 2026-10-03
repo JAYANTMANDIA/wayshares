@@ -6,6 +6,7 @@ import {
   updateProfile
 } from 'firebase/auth';
 import { User } from '../types';
+import { readApiJson } from './apiJson';
 import { auth, db } from './firebase';
 
 const EMAIL_LINK_KEY = 'uberx_email_link';
@@ -76,7 +77,7 @@ export async function saveFirebaseUserProfile(
         ...(suppliedPhone ? { phoneNumber: suppliedPhone } : {})
       })
     });
-    const result = await response.json();
+    const result = await readApiJson<{ user?: Partial<User>; error?: string }>(response);
     if (!response.ok) throw new Error(result.error || 'Unable to create your profile');
     serverProfile = result.user as Partial<User>;
   } catch (error) {
