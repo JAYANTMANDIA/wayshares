@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Smartphone, Monitor, Shield, User, Car, Bell } from 'lucide-react';
 import { store } from '../services/store';
+import { canAccessAdminPortal } from '../lib/adminAccess';
 
 interface PhoneFrameProps {
   children: React.ReactNode;
@@ -12,11 +13,13 @@ export const PhoneFrame: React.FC<PhoneFrameProps> = ({ children, currentScreen,
   const [isPhoneView, setIsPhoneView] = useState(true);
   const [currentTime, setCurrentTime] = useState('9:41');
   const [activeRole, setActiveRole] = useState(store.activeRole);
+  const [userEmail, setUserEmail] = useState(store.user.email);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
 
   useEffect(() => {
     const updateStats = () => {
       setActiveRole(store.activeRole);
+      setUserEmail(store.user.email);
       setUnreadNotifs(store.notifications.filter((n) => !n.read).length);
     };
     updateStats();
@@ -40,6 +43,10 @@ export const PhoneFrame: React.FC<PhoneFrameProps> = ({ children, currentScreen,
   const [rcWarningToast, setRcWarningToast] = useState<string | null>(null);
 
   const handleRoleChange = (role: 'passenger' | 'driver' | 'admin') => {
+    if (role === 'admin' && !canAccessAdminPortal(store.user.email)) {
+      onNavigate('home');
+      return;
+    }
     if (role === 'driver' && !store.canProvideRide()) {
       setRcWarningToast('Vehicle RC required to provide rides. Upload RC in Profile to unlock Driver Mode.');
       setTimeout(() => setRcWarningToast(null), 4000);
@@ -125,17 +132,19 @@ export const PhoneFrame: React.FC<PhoneFrameProps> = ({ children, currentScreen,
               >
                 Driver
               </button>
-              <button
-                onClick={() => handleRoleChange('admin')}
-                id="role-switch-admin"
-                className={`px-2.5 py-1 rounded-full font-medium transition-all duration-200 active:scale-95 ${
-                  activeRole === 'admin'
-                    ? 'bg-gradient-to-r from-neutral-800 to-black text-white shadow-xs font-bold scale-[1.02]'
-                    : 'text-neutral-600 hover:text-black hover:bg-neutral-200/60'
-                }`}
-              >
-                Admin
-              </button>
+              {canAccessAdminPortal(userEmail) && (
+                <button
+                  onClick={() => handleRoleChange('admin')}
+                  id="role-switch-admin"
+                  className={`px-2.5 py-1 rounded-full font-medium transition-all duration-200 active:scale-95 ${
+                    activeRole === 'admin'
+                      ? 'bg-gradient-to-r from-neutral-800 to-black text-white shadow-xs font-bold scale-[1.02]'
+                      : 'text-neutral-600 hover:text-black hover:bg-neutral-200/60'
+                  }`}
+                >
+                  Admin
+                </button>
+              )}
             </div>
 
             {/* Notifications */}

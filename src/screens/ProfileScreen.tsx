@@ -22,8 +22,9 @@ import {
   Plus
 } from 'lucide-react';
 import { TopBar } from '../components/TopBar';
-import { AppScreen } from '../types';
+import { AppScreen, type VerificationDocumentType } from '../types';
 import { store } from '../services/store';
+import { canAccessAdminPortal } from '../lib/adminAccess';
 
 interface ProfileScreenProps {
   onNavigate: (screen: AppScreen) => void;
@@ -35,14 +36,18 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(user.fullName);
   const [editEmail, setEditEmail] = useState(user.email);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
 
   // Verification states
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [showRcRequiredModal, setShowRcRequiredModal] = useState(false);
-  const [aadhaarInput, setAadhaarInput] = useState(user.aadhaarNumber || '2345 6789 4921');
-  const [panInput, setPanInput] = useState(user.panNumber || 'ABCDE1234F');
-  const [rcInput, setRcInput] = useState(user.rcNumber || 'KA 05 MN 3291');
-  const [hasRc, setHasRc] = useState(Boolean(user.rcNumber && user.rcVerified));
+  const [aadhaarFile, setAadhaarFile] = useState<File | null>(null);
+  const [panFile, setPanFile] = useState<File | null>(null);
+  const [rcFile, setRcFile] = useState<File | null>(null);
+  const [isSubmittingDocuments, setIsSubmittingDocuments] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [verificationError, setVerificationError] = useState('');
   const [verificationFeedback, setVerificationFeedback] = useState('');
 
   useEffect(() => {
@@ -50,10 +55,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
       const u = store.user;
       setUser({ ...u });
       setActiveRole(store.activeRole);
-      setAadhaarInput(u.aadhaarNumber || '2345 6789 4921');
-      setPanInput(u.panNumber || 'ABCDE1234F');
-      setRcInput(u.rcNumber || 'KA 05 MN 3291');
-      setHasRc(Boolean(u.rcNumber && u.rcVerified));
     };
     return store.subscribe(update);
   }, []);
@@ -71,6 +72,20 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
     }
   };
 
+  const handlePhotoUpload = async (file?: File) => {
+    if (!file) return;
+    setPhotoError('');
+    setPhotoUploading(true);
+    try {
+      await store.uploadProfilePhoto(file);
+      setUser({ ...store.user });
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : 'Unable to upload photo');
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     store.updateUserProfile({
@@ -80,44 +95,30 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
     setIsEditing(false);
   };
 
-  const handleSaveVerification = (e: React.FormEvent) => {
+  const handleSaveVerification = async (e: React.FormEvent) => {
     e.preventDefault();
-    store.updateVerificationDocs({
-      aadhaarNumber: aadhaarInput.trim() || '2345 6789 4921',
-      aadhaarVerified: true,
-      aadhaarDoc: 'aadhaar_card_verified.pdf',
-      panNumber: panInput.trim().toUpperCase() || 'ABCDE1234F',
-      panVerified: true,
-      panDoc: 'pan_card_verified.pdf',
-      rcNumber: hasRc ? (rcInput.trim().toUpperCase() || 'KA 05 MN 3291') : null,
-      rcVerified: hasRc,
-      rcDoc: hasRc ? 'vehicle_rc_smartcard.pdf' : null
-    });
-    setVerificationFeedback('Verification documents saved & synced.');
-    setTimeout(() => {
+    setIsSubmittingDocuments(true);
+    setUploadProgress(0);
+    setVerificationError('');
+    try {
+      await store.submitVerificationDocuments({
+        ...(aadhaarFile ? { aadhaarSelfie: aadhaarFile } : {}),
+        ...(panFile ? { pan: panFile } : {}),
+        ...(rcFile ? { rcSelfie: rcFile } : {})
+      }, (progress) => setUploadProgress(progress));
+      setVerificationFeedback('Images submitted securely. They are now in the admin review queue.');
+      setAadhaarFile(null);
+      setPanFile(null);
+      setRcFile(null);
+      window.setTimeout(() => {
       setVerificationFeedback('');
       setShowVerificationModal(false);
-    }, 1200);
-  };
-
-  const handleRemoveRc = () => {
-    store.removeRC();
-    setHasRc(false);
-    setRcInput('');
-    setVerificationFeedback('RC removed. You are now in Passenger-only mode.');
-    setTimeout(() => setVerificationFeedback(''), 2500);
-  };
-
-  const handleAddDefaultRc = () => {
-    store.updateVerificationDocs({
-      rcNumber: 'KA 05 MN 3291',
-      rcVerified: true,
-      rcDoc: 'vehicle_rc_smartcard.pdf'
-    });
-    setHasRc(true);
-    setRcInput('KA 05 MN 3291');
-    setVerificationFeedback('RC uploaded & verified. You can now provide rides!');
-    setTimeout(() => setVerificationFeedback(''), 2500);
+      }, 1500);
+    } catch (error) {
+      setVerificationError(error instanceof Error ? error.message : 'Unable to submit documents');
+    } finally {
+      setIsSubmittingDocuments(false);
+    }
   };
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -128,7 +129,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
     onNavigate('login');
   };
 
-  const isEligibleToDrive = Boolean(user.rcNumber && user.rcVerified);
+  const isEligibleToDrive = store.canProvideRide();
+  const riderStatus = user.riderVerificationStatus || 'unverified';
+  const driverStatus = user.driverVerificationStatus || 'unverified';
+  const documentStatus = (type: VerificationDocumentType) => user.verificationDocuments?.[type]?.status || 'unverified';
 
   return (
     <div className="w-full min-h-[720px] bg-white flex flex-col justify-between select-none pb-24 relative">
@@ -153,11 +157,30 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
             <div className="flex items-center gap-4">
               <div className="relative">
                 <img
-                  src={user.profilePhoto}
+                  src={user.profilePhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName || 'U')}&background=f97316&color=fff&size=128`}
                   alt={user.fullName}
                   className="w-16 h-16 rounded-full object-cover border-2 border-neutral-100 shadow-md"
                 />
                 <span className="absolute bottom-0 right-0 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full" />
+                {/* Photo upload button */}
+                <label
+                  htmlFor="profile-photo-input"
+                  className="absolute -top-1 -right-1 w-5 h-5 bg-black text-white rounded-full flex items-center justify-center cursor-pointer hover:bg-neutral-700 border-2 border-white"
+                  title="Change photo"
+                >
+                  {photoUploading ? (
+                    <span className="w-2 h-2 border border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Edit2 className="w-2.5 h-2.5" />
+                  )}
+                </label>
+                <input
+                  id="profile-photo-input"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="sr-only"
+                  onChange={(e) => void handlePhotoUpload(e.target.files?.[0])}
+                />
               </div>
 
               <div className="flex-1">
@@ -227,21 +250,60 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
               </form>
             )}
 
-            {/* Quick Stats */}
+            {photoError && <p className="text-[11px] text-rose-600 mt-1">{photoError}</p>}
+
+            {/* Quick Stats + Trust Score */}
             <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-neutral-100 text-center">
               <div>
-                <span className="text-base font-black text-black block">{user.totalTrips}</span>
-                <span className="text-[10px] text-neutral-500 font-semibold uppercase">Total Trips</span>
+                <span className="text-base font-black text-black block">{user.totalTrips || 0}</span>
+                <span className="text-[10px] text-neutral-500 font-semibold uppercase">Rides Done</span>
               </div>
               <div>
-                <span className="text-base font-black text-[#EF4444] block">4.9 ★</span>
-                <span className="text-[10px] text-neutral-500 font-semibold uppercase">Passenger Rating</span>
+                <span className="text-base font-black text-neutral-500 block">{user.cancelledRides || 0}</span>
+                <span className="text-[10px] text-neutral-500 font-semibold uppercase">Cancelled</span>
               </div>
               <div>
-                <span className="text-base font-black text-emerald-600 block">₹4,200</span>
-                <span className="text-[10px] text-neutral-500 font-semibold uppercase">Highway Saved</span>
+                <span className={`text-base font-black block ${
+                  (user.trustScore ?? 50) >= 80 ? 'text-emerald-600'
+                  : (user.trustScore ?? 50) >= 55 ? 'text-amber-600'
+                  : 'text-rose-500'
+                }`}>{user.trustScore ?? 50}</span>
+                <span className="text-[10px] text-neutral-500 font-semibold uppercase">Trust Score</span>
               </div>
             </div>
+
+            {/* Trust Score bar */}
+            {store.activeRole === 'driver' && (
+              <div className="mt-3 pt-3 border-t border-neutral-100">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-bold uppercase text-neutral-500 flex items-center gap-1">
+                    🛡️ Driver Trust Score
+                  </span>
+                  <span className={`text-xs font-extrabold ${
+                    (user.trustScore ?? 50) >= 80 ? 'text-emerald-600'
+                    : (user.trustScore ?? 50) >= 55 ? 'text-amber-600'
+                    : 'text-rose-500'
+                  }`}>{user.trustScore ?? 50}/100 · {
+                    (user.trustScore ?? 50) >= 80 ? 'Highly Trusted'
+                    : (user.trustScore ?? 50) >= 55 ? 'Trustworthy'
+                    : 'Building Trust'
+                  }</span>
+                </div>
+                <div className="w-full h-2 bg-neutral-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      (user.trustScore ?? 50) >= 80 ? 'bg-emerald-500'
+                      : (user.trustScore ?? 50) >= 55 ? 'bg-amber-500'
+                      : 'bg-rose-400'
+                    }`}
+                    style={{ width: `${user.trustScore ?? 50}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-neutral-400 mt-1">
+                  Increases with completed rides, decreases with cancellations.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* VERIFICATION SECTION: Aadhaar, PAN, and RC (Optional) */}
@@ -253,7 +315,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
                   <span>Document Verification</span>
                 </h3>
                 <p className="text-[11px] text-neutral-500 mt-0.5">
-                  Aadhaar & PAN are mandatory. RC is optional.
+                  Admin-reviewed documents control passenger and driver access.
                 </p>
               </div>
 
@@ -281,117 +343,35 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
                 )}
                 <div>
                   <span className="font-bold block">
-                    {isEligibleToDrive
-                      ? 'Eligible to Provide & Take Rides'
-                      : 'Passenger Only (Can Take Rides)'}
+                    {isEligibleToDrive ? 'Driver verified' : `Rider verification: ${riderStatus}`}
                   </span>
                   <p className="text-[11px] mt-0.5 opacity-90">
                     {isEligibleToDrive
-                      ? 'Vehicle RC is verified. You can publish rides, accept bookings, or take rides as a passenger.'
-                      : 'Vehicle RC is not uploaded. You can take rides as a passenger. Upload your RC (optional) to provide rides.'}
+                      ? 'You can book rides and publish rides.'
+                      : riderStatus === 'verified'
+                        ? 'You can book rides. Upload your RC with your face visible and wait for driver approval to publish.'
+                        : 'Booking is locked until an admin approves your Aadhaar photo and PAN image.'}
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* List of 3 Documents */}
-            <div className="space-y-2 pt-1">
-              {/* 1. Aadhaar Card */}
-              <div className="p-2.5 rounded-xl bg-neutral-50 border border-neutral-200/70 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">
-                    <FileText className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-neutral-900">Aadhaar Card</span>
-                      <span className="text-[9px] bg-neutral-200 text-neutral-700 font-bold px-1.5 py-0.2 rounded-sm">
-                        Mandatory
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-neutral-500 font-mono">
-                      {user.aadhaarNumber || 'XXXX-XXXX-4921'}
-                    </p>
-                  </div>
+            <div className="space-y-2 pt-1 text-xs">
+              {([
+                ['aadhaarSelfie', 'Aadhaar held with your face visible'],
+                ['pan', 'PAN card image'],
+                ['rcSelfie', 'Vehicle RC held with your face visible']
+              ] as const).map(([type, label]) => (
+                <div key={type} className="flex items-center justify-between rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+                  <span className="font-semibold text-neutral-800">{label}</span>
+                  <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold capitalize text-neutral-700">
+                    {documentStatus(type)}
+                  </span>
                 </div>
-
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
-                  <Check className="w-3 h-3 stroke-[3]" />
-                  Verified
-                </span>
-              </div>
-
-              {/* 2. PAN Card */}
-              <div className="p-2.5 rounded-xl bg-neutral-50 border border-neutral-200/70 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">
-                    <FileCheck2 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-neutral-900">PAN Card</span>
-                      <span className="text-[9px] bg-neutral-200 text-neutral-700 font-bold px-1.5 py-0.2 rounded-sm">
-                        Mandatory
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-neutral-500 font-mono">
-                      {user.panNumber || 'ABCDE1234F'}
-                    </p>
-                  </div>
-                </div>
-
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
-                  <Check className="w-3 h-3 stroke-[3]" />
-                  Verified
-                </span>
-              </div>
-
-              {/* 3. Vehicle RC (Optional) */}
-              <div className="p-2.5 rounded-xl bg-neutral-50 border border-neutral-200/70 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs ${
-                      isEligibleToDrive
-                        ? 'bg-[#EF4444]/10 text-[#EF4444]'
-                        : 'bg-neutral-200 text-neutral-500'
-                    }`}
-                  >
-                    <Car className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-neutral-900">Vehicle RC</span>
-                      <span className="text-[9px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.2 rounded-sm">
-                        Optional
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-neutral-500 font-mono">
-                      {isEligibleToDrive
-                        ? `${user.rcNumber} • Verified`
-                        : 'Not uploaded • Passenger only'}
-                    </p>
-                  </div>
-                </div>
-
-                {isEligibleToDrive ? (
-                  <button
-                    onClick={handleRemoveRc}
-                    className="text-[10px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-lg border border-rose-200 transition-colors"
-                    title="Remove RC to test Passenger-only mode"
-                  >
-                    Remove RC
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleAddDefaultRc}
-                    className="text-[10px] font-bold text-black hover:bg-neutral-200 bg-white px-2.5 py-1 rounded-lg border border-neutral-300 shadow-2xs transition-colors flex items-center gap-1"
-                    title="Upload RC to enable providing rides"
-                  >
-                    <Plus className="w-3 h-3 stroke-[2.5]" />
-                    Upload RC
-                  </button>
-                )}
-              </div>
+              ))}
+              <p className="text-[10px] leading-relaxed text-neutral-500">
+                Rider approval is required to book. Driver mode and ride publishing also require an approved RC photo.
+              </p>
             </div>
           </div>
 
@@ -405,8 +385,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
                 <h4 className="text-sm font-bold leading-tight">Driver Mode</h4>
                 <p className="text-[11px] text-neutral-300">
                   {isEligibleToDrive
-                    ? 'Publish rides & earn on empty seats'
-                    : 'Requires Vehicle RC to provide rides'}
+                    ? 'Approved to publish rides'
+                    : driverStatus === 'pending'
+                      ? 'Driver documents awaiting admin review'
+                      : 'Requires approved rider identity and RC photo'}
                 </p>
               </div>
             </div>
@@ -425,7 +407,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
                 ? 'Active ✓'
                 : isEligibleToDrive
                 ? 'Switch Mode'
-                : 'RC Needed'}
+                : driverStatus === 'pending' ? 'In Review' : 'Approval Needed'}
             </button>
           </div>
 
@@ -475,16 +457,18 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
               <ChevronRight className="w-4 h-4 text-neutral-400" />
             </button>
 
-            <button
-              onClick={() => onNavigate('admin_dashboard')}
-              className="w-full p-3.5 flex items-center justify-between text-left hover:bg-neutral-50 text-amber-700"
-            >
-              <div className="flex items-center gap-3">
-                <ShieldCheck className="w-4 h-4" />
-                <span className="text-xs font-bold">Admin Management Console</span>
-              </div>
-              <ChevronRight className="w-4 h-4 text-neutral-400" />
-            </button>
+            {canAccessAdminPortal(store.user.email) && (
+              <button
+                onClick={() => onNavigate('admin_dashboard')}
+                className="w-full p-3.5 flex items-center justify-between text-left hover:bg-neutral-50 text-amber-700"
+              >
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className="w-4 h-4" />
+                  <span className="text-xs font-bold">Admin Management Console</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-neutral-400" />
+              </button>
+            )}
           </div>
 
           {/* Logout Button */}
@@ -499,7 +483,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
         </div>
       </div>
 
-      {/* MODAL 1: Full Document Verification Center */}
+      {/* Verification document submission */}
       {showVerificationModal && (
         <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <motion.div
@@ -513,7 +497,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
                   Identity & Vehicle Verification
                 </h3>
                 <p className="text-[11px] text-neutral-500">
-                  Manage Aadhaar, PAN, and RC documents
+                  Upload private images for manual admin review
                 </p>
               </div>
               <button
@@ -525,117 +509,51 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
             </div>
 
             <form onSubmit={handleSaveVerification} className="space-y-3.5">
-              {/* 1. Aadhaar Card Input */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold text-neutral-700">
-                    Aadhaar Card Number <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded-sm">
-                    Verified ✓
-                  </span>
-                </div>
-                <input
-                  type="text"
-                  value={aadhaarInput}
-                  onChange={(e) => setAadhaarInput(e.target.value)}
-                  placeholder="2345 6789 4921"
-                  className="w-full text-xs font-mono border border-neutral-300 rounded-xl px-3 py-2 outline-hidden focus:border-black"
-                  required
-                />
-                <p className="text-[10px] text-neutral-400">
-                  Uploaded doc: aadhaar_card_verified.pdf
-                </p>
-              </div>
-
-              {/* 2. PAN Card Input */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold text-neutral-700">
-                    PAN Card Number <span className="text-[#EF4444]">*</span>
-                  </label>
-                  <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded-sm">
-                    Verified ✓
-                  </span>
-                </div>
-                <input
-                  type="text"
-                  value={panInput}
-                  onChange={(e) => setPanInput(e.target.value.toUpperCase())}
-                  placeholder="ABCDE1234F"
-                  maxLength={10}
-                  className="w-full text-xs font-mono uppercase border border-neutral-300 rounded-xl px-3 py-2 outline-hidden focus:border-black"
-                  required
-                />
-                <p className="text-[10px] text-neutral-400">
-                  Uploaded doc: pan_card_verified.pdf
-                </p>
-              </div>
-
-              {/* 3. Vehicle RC Section (Optional) */}
-              <div className="pt-2 border-t border-neutral-150 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-black block">
-                      Vehicle RC (Registration Certificate)
-                    </span>
-                    <span className="text-[10px] text-neutral-500 font-medium">
-                      Optional: Required ONLY to provide rides
-                    </span>
+              <label className="block space-y-1 text-[11px] font-bold text-neutral-700">
+                Aadhaar card held beside your visible face <span className="text-rose-600">Required</span>
+                <input required type="file" disabled={isSubmittingDocuments} accept="image/jpeg,image/png,image/webp" onChange={(e) => setAadhaarFile(e.target.files?.[0] || null)} className="block w-full text-[10px] font-normal" />
+                <span className="block text-[10px] font-normal text-neutral-500">Current status: {documentStatus('aadhaarSelfie')}</span>
+              </label>
+              <label className="block space-y-1 text-[11px] font-bold text-neutral-700">
+                PAN card image <span className="text-rose-600">Required</span>
+                <input required type="file" disabled={isSubmittingDocuments} accept="image/jpeg,image/png,image/webp" onChange={(e) => setPanFile(e.target.files?.[0] || null)} className="block w-full text-[10px] font-normal" />
+                <span className="block text-[10px] font-normal text-neutral-500">Current status: {documentStatus('pan')}</span>
+              </label>
+              <label className="block space-y-1 border-t border-neutral-200 pt-3 text-[11px] font-bold text-neutral-700">
+                Vehicle RC held beside your visible face <span className="font-normal text-neutral-500">Needed to drive</span>
+                <input type="file" disabled={isSubmittingDocuments} accept="image/jpeg,image/png,image/webp" onChange={(e) => setRcFile(e.target.files?.[0] || null)} className="block w-full text-[10px] font-normal" />
+                <span className="block text-[10px] font-normal text-neutral-500">Current status: {documentStatus('rcSelfie')}</span>
+              </label>
+              <p className="text-[10px] leading-relaxed text-neutral-500">Images are stored in the administrator's private Google Drive and shown only in the protected admin portal. Accepted: JPEG, PNG, WebP, up to 5 MB each.</p>
+              {isSubmittingDocuments && (
+                <div className="space-y-1.5" role="status" aria-live="polite">
+                  <div className="flex justify-between text-[10px] text-neutral-600">
+                    <span>Uploading documents…</span><span>{uploadProgress}%</span>
                   </div>
-
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={hasRc}
-                      onChange={(e) => setHasRc(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-neutral-200 peer-focus:outline-hidden rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#EF4444]"></div>
-                  </label>
+                  <div className="h-2 overflow-hidden rounded-full bg-neutral-100">
+                    <div className="h-full rounded-full bg-emerald-600 transition-[width]" style={{ width: `${uploadProgress}%` }} />
+                  </div>
+                  {uploadProgress >= 95 && <p className="text-[10px] text-neutral-500">Saving images to the administrator's private Google Drive…</p>}
                 </div>
-
-                {hasRc ? (
-                  <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 space-y-2">
-                    <label className="text-[11px] font-bold text-neutral-700 block">
-                      Vehicle Registration Number
-                    </label>
-                    <input
-                      type="text"
-                      value={rcInput}
-                      onChange={(e) => setRcInput(e.target.value.toUpperCase())}
-                      placeholder="KA 05 MN 3291"
-                      className="w-full text-xs font-mono uppercase border border-neutral-300 rounded-xl px-3 py-2 outline-hidden focus:border-black bg-white"
-                    />
-                    <div className="flex items-center gap-1.5 text-[10px] text-emerald-700 font-medium">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>RC Attached: vehicle_rc_smartcard.pdf</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-2.5 rounded-xl bg-neutral-50 border border-neutral-200 text-[11px] text-neutral-600 leading-tight">
-                    <span className="font-semibold text-neutral-800 block mb-0.5">
-                      No RC uploaded (Passenger Mode)
-                    </span>
-                    You can take rides with your verified Aadhaar & PAN. You will not be able to offer rides or switch to Driver Mode.
-                  </div>
-                )}
-              </div>
+              )}
+              {verificationError && <p role="alert" className="rounded-lg bg-rose-50 p-2 text-[11px] text-rose-700">{verificationError}</p>}
 
               {/* Action Buttons */}
               <div className="pt-2 flex gap-2">
                 <button
                   type="button"
+                  disabled={isSubmittingDocuments}
                   onClick={() => setShowVerificationModal(false)}
-                  className="flex-1 py-2.5 text-xs font-bold text-neutral-700 border border-neutral-300 rounded-xl hover:bg-neutral-50"
+                  className="flex-1 py-2.5 text-xs font-bold text-neutral-700 border border-neutral-300 rounded-xl hover:bg-neutral-50 disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
+                  disabled={isSubmittingDocuments}
                   className="flex-1 py-2.5 text-xs font-bold bg-black text-white rounded-xl hover:bg-neutral-800 shadow-xs"
                 >
-                  Save & Apply
+                  {isSubmittingDocuments ? 'Uploading…' : 'Submit for admin review'}
                 </button>
               </div>
             </form>
@@ -643,7 +561,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* MODAL 2: RC Required Alert Modal */}
+      {/* Driver eligibility explanation */}
       {showRcRequiredModal && (
         <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-5 z-50">
           <motion.div
@@ -656,27 +574,25 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onNavigate }) => {
             </div>
 
             <h3 className="text-sm font-extrabold text-black">
-              Vehicle RC Required to Provide Rides
+              Admin Approval Required
             </h3>
 
             <p className="text-xs text-neutral-600 leading-relaxed">
-              Your <strong>Aadhaar</strong> and <strong>PAN</strong> cards are verified, which allows you to <strong>take rides as a passenger</strong>.
+              To book rides, an admin must approve your Aadhaar photo and PAN image.
             </p>
             <p className="text-xs text-neutral-600 leading-relaxed">
-              However, <strong>Vehicle RC is required to provide rides</strong> or activate Driver Mode. Without RC, you can only take rides.
+              Driver mode additionally requires admin approval of your vehicle RC photo with your face visible.
             </p>
 
             <div className="flex flex-col gap-2 pt-2">
               <button
                 onClick={() => {
                   setShowRcRequiredModal(false);
-                  setHasRc(true);
-                  if (!rcInput) setRcInput('KA 05 MN 3291');
                   setShowVerificationModal(true);
                 }}
                 className="w-full py-2.5 px-3 rounded-xl bg-[#EF4444] text-white text-xs font-bold hover:bg-rose-600 active:scale-95 shadow-xs"
               >
-                Upload Vehicle RC Now
+                Submit Verification Documents
               </button>
               <button
                 onClick={() => setShowRcRequiredModal(false)}

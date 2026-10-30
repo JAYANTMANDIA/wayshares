@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CreditCard, QrCode, Wallet, Building2, ShieldCheck, ChevronDown, ChevronUp, Lock } from 'lucide-react';
+import { QrCode, Wallet, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import { TopBar } from '../components/TopBar';
 import { AppScreen, Ride, Booking } from '../types';
 import { store } from '../services/store';
@@ -19,7 +19,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
   onNavigate,
   onBookingSuccess
 }) => {
-  const [selectedMethod, setSelectedMethod] = useState<'card' | 'upi' | 'wallet' | 'netbanking'>('card');
+  const [selectedMethod, setSelectedMethod] = useState<'upi' | 'cash'>(() => ride.driverUpiQrDataUrl ? 'upi' : 'cash');
   const [showFareBreakdown, setShowFareBreakdown] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
@@ -120,42 +120,10 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
             </h3>
 
             <div className="space-y-2.5">
-              {/* 1. Credit / Debit Card */}
               <div
-                onClick={() => setSelectedMethod('card')}
-                className={`p-4 rounded-2xl border transition-all duration-200 flex items-center justify-between cursor-pointer active:scale-[0.98] ${
-                  selectedMethod === 'card'
-                    ? 'border-2 border-orange-500 bg-orange-50/25 ring-4 ring-orange-500/20 shadow-xs scale-[1.01]'
-                    : 'border-neutral-200 bg-white hover:border-orange-300'
-                }`}
-              >
-                <div className="flex items-center gap-3.5">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors shadow-2xs ${
-                    selectedMethod === 'card' ? 'bg-orange-500 text-white' : 'bg-neutral-100 text-neutral-800'
-                  }`}>
-                    <CreditCard className="w-5 h-5 stroke-[2]" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-black">Credit / Debit Card</h4>
-                    <p className="text-[11px] text-neutral-500">Visa, Mastercard, RuPay, Amex</p>
-                  </div>
-                </div>
-
-                <div
-                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                    selectedMethod === 'card' ? 'border-orange-500 bg-orange-500' : 'border-neutral-300'
-                  }`}
-                >
-                  {selectedMethod === 'card' && (
-                    <div className="w-2 h-2 rounded-full bg-white shadow-2xs" />
-                  )}
-                </div>
-              </div>
-
-              {/* 2. UPI */}
-              <div
-                onClick={() => setSelectedMethod('upi')}
-                className={`p-4 rounded-2xl border transition-all duration-200 flex items-center justify-between cursor-pointer active:scale-[0.98] ${
+                onClick={() => ride.driverUpiQrDataUrl && setSelectedMethod('upi')}
+                aria-disabled={!ride.driverUpiQrDataUrl}
+                className={`p-4 rounded-2xl border transition-all duration-200 flex items-center justify-between ${ride.driverUpiQrDataUrl ? 'cursor-pointer active:scale-[0.98]' : 'cursor-not-allowed opacity-50'} ${
                   selectedMethod === 'upi'
                     ? 'border-2 border-orange-500 bg-orange-50/25 ring-4 ring-orange-500/20 shadow-xs scale-[1.01]'
                     : 'border-neutral-200 bg-white hover:border-orange-300'
@@ -169,7 +137,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
                   </div>
                   <div>
                     <h4 className="text-sm font-bold text-black">UPI</h4>
-                    <p className="text-[11px] text-neutral-500">Google Pay, PhonePe, Paytm, BHIM</p>
+                    <p className="text-[11px] text-neutral-500">{ride.driverUpiQrDataUrl ? 'Scan the driver’s QR code to pay' : 'UPI QR not provided for this ride'}</p>
                   </div>
                 </div>
 
@@ -184,65 +152,32 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
                 </div>
               </div>
 
-              {/* 3. Wallet */}
               <div
-                onClick={() => setSelectedMethod('wallet')}
+                onClick={() => setSelectedMethod('cash')}
                 className={`p-4 rounded-2xl border transition-all duration-200 flex items-center justify-between cursor-pointer active:scale-[0.98] ${
-                  selectedMethod === 'wallet'
+                  selectedMethod === 'cash'
                     ? 'border-2 border-orange-500 bg-orange-50/25 ring-4 ring-orange-500/20 shadow-xs scale-[1.01]'
                     : 'border-neutral-200 bg-white hover:border-orange-300'
                 }`}
               >
                 <div className="flex items-center gap-3.5">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors shadow-2xs ${
-                    selectedMethod === 'wallet' ? 'bg-orange-500 text-white' : 'bg-neutral-100 text-neutral-800'
+                    selectedMethod === 'cash' ? 'bg-orange-500 text-white' : 'bg-neutral-100 text-neutral-800'
                   }`}>
                     <Wallet className="w-5 h-5 stroke-[2]" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-black">Wallet</h4>
-                    <p className="text-[11px] text-neutral-500">UberX Cash, Amazon Pay (₹500 bal)</p>
+                    <h4 className="text-sm font-bold text-black">Cash</h4>
+                    <p className="text-[11px] text-neutral-500">Pay the driver at pickup</p>
                   </div>
                 </div>
 
                 <div
                   className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                    selectedMethod === 'wallet' ? 'border-orange-500 bg-orange-500' : 'border-neutral-300'
+                    selectedMethod === 'cash' ? 'border-orange-500 bg-orange-500' : 'border-neutral-300'
                   }`}
                 >
-                  {selectedMethod === 'wallet' && (
-                    <div className="w-2 h-2 rounded-full bg-white shadow-2xs" />
-                  )}
-                </div>
-              </div>
-
-              {/* 4. Net Banking */}
-              <div
-                onClick={() => setSelectedMethod('netbanking')}
-                className={`p-4 rounded-2xl border transition-all duration-200 flex items-center justify-between cursor-pointer active:scale-[0.98] ${
-                  selectedMethod === 'netbanking'
-                    ? 'border-2 border-orange-500 bg-orange-50/25 ring-4 ring-orange-500/20 shadow-xs scale-[1.01]'
-                    : 'border-neutral-200 bg-white hover:border-orange-300'
-                }`}
-              >
-                <div className="flex items-center gap-3.5">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors shadow-2xs ${
-                    selectedMethod === 'netbanking' ? 'bg-orange-500 text-white' : 'bg-neutral-100 text-neutral-800'
-                  }`}>
-                    <Building2 className="w-5 h-5 stroke-[2]" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-black">Net Banking</h4>
-                    <p className="text-[11px] text-neutral-500">HDFC, ICICI, SBI, Axis & 40+ banks</p>
-                  </div>
-                </div>
-
-                <div
-                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                    selectedMethod === 'netbanking' ? 'border-orange-500 bg-orange-500' : 'border-neutral-300'
-                  }`}
-                >
-                  {selectedMethod === 'netbanking' && (
+                  {selectedMethod === 'cash' && (
                     <div className="w-2 h-2 rounded-full bg-white shadow-2xs" />
                   )}
                 </div>
@@ -250,12 +185,21 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
             </div>
           </div>
 
+          {selectedMethod === 'upi' && ride.driverUpiQrDataUrl && (
+            <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-center">
+              <h3 className="text-sm font-bold text-neutral-900">Pay the driver by UPI</h3>
+              <img src={ride.driverUpiQrDataUrl} alt="Driver UPI payment QR code" className="mx-auto mt-3 h-52 w-52 rounded-xl border border-neutral-200 object-contain" />
+              <p className="mt-2 text-xs text-neutral-600">Scan with your UPI app and pay ₹{totalAmount}.</p>
+              <p className="mt-1 text-[11px] text-amber-700">After you confirm, your booking is reserved. The driver must confirm they received the transfer.</p>
+            </div>
+          )}
+
           {/* Security Assurance Badge matching Screenshot 9 */}
           <div className="flex items-center gap-2.5 p-3 rounded-xl bg-emerald-50/60 border border-emerald-200/80 text-emerald-900">
-            <Lock className="w-4 h-4 text-emerald-600 shrink-0" />
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
             <div className="text-[11px] leading-tight">
-              <span className="font-bold block">100% Secure Payments</span>
-              <span className="text-emerald-700/80">Processed via 256-bit encrypted gateway</span>
+              <span className="font-bold block">{selectedMethod === 'cash' ? 'Pay in cash at pickup' : 'Direct UPI transfer'}</span>
+              <span className="text-emerald-700/80">The driver records payment receipt after the booking.</span>
             </div>
           </div>
 
@@ -286,7 +230,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
               <span>Processing...</span>
             </>
           ) : (
-            <span>Proceed to Pay</span>
+            <span>{selectedMethod === 'cash' ? 'Confirm Cash Booking' : 'I’ve Paid, Confirm Booking'}</span>
           )}
         </button>
       </div>

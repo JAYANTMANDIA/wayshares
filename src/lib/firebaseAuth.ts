@@ -1,7 +1,9 @@
 import {
   User as FirebaseUser,
+  browserSessionPersistence,
   isSignInWithEmailLink,
   sendSignInLinkToEmail,
+  setPersistence,
   signInWithEmailLink,
   updateProfile
 } from 'firebase/auth';
@@ -17,6 +19,11 @@ function requireFirebaseAuth() {
     throw new Error('Firebase is not configured. Add the Firebase settings to .env.local.');
   }
   return { auth, db };
+}
+
+export async function useSessionAuthPersistence() {
+  const { auth: firebaseAuth } = requireFirebaseAuth();
+  await setPersistence(firebaseAuth, browserSessionPersistence);
 }
 
 export function isEmailSignInLink() {
@@ -43,6 +50,7 @@ export async function completeEmailSignIn(email: string) {
     throw new Error('Open the sign-in link from your email to continue.');
   }
 
+  await setPersistence(firebaseAuth, browserSessionPersistence);
   const credential = await signInWithEmailLink(firebaseAuth, email, window.location.href);
   const fullName = localStorage.getItem(EMAIL_NAME_KEY) || undefined;
   if (fullName) await updateProfile(credential.user, { displayName: fullName });
@@ -97,16 +105,13 @@ export async function saveFirebaseUserProfile(
     userRole: serverProfile.userRole || 'passenger',
     rating: Number(serverProfile.rating) || 0,
     totalTrips: Number(serverProfile.totalTrips) || 0,
-    aadhaarNumber: undefined,
-    aadhaarVerified: false,
-    aadhaarDoc: undefined,
-    panNumber: undefined,
-    panVerified: false,
-    panDoc: undefined,
+    riderVerificationStatus: serverProfile.riderVerificationStatus || 'unverified',
+    driverVerificationStatus: serverProfile.driverVerificationStatus || 'unverified',
+    verificationDocuments: serverProfile.verificationDocuments,
     rcNumber: serverProfile.rcNumber,
-    rcVerified: serverProfile.rcVerified === true,
-    rcDoc: undefined,
-    canProvideRide: serverProfile.rcVerified === true && Boolean(serverProfile.rcNumber),
+    rcVerified: serverProfile.driverVerificationStatus === 'verified',
+    canProvideRide: serverProfile.riderVerificationStatus === 'verified' &&
+      serverProfile.driverVerificationStatus === 'verified',
     createdAt: now,
     updatedAt: now
   };

@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Search, Car, Briefcase, MapPin, Bell } from 'lucide-react';
 import { AppScreen } from '../types';
 import { store } from '../services/store';
+import { cleanCityName } from '../lib/cleanCityName';
 
 interface HomeScreenProps {
   onNavigate: (screen: AppScreen) => void;
@@ -21,7 +22,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, onSelectRece
       setUnreadCount(store.notifications.filter((n) => !n.read).length);
       setRecentTrips(store.bookings.slice(0, 3));
     };
-    return store.subscribe(update);
+    const unsubscribe = store.subscribe(update);
+    void store.fetchMyBookings().catch(() => {});
+    return unsubscribe;
   }, []);
 
   const [selectedTrip, setSelectedTrip] = useState<string | null>(null);
@@ -197,7 +200,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, onSelectRece
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-black tracking-tight">
-                    {trip.fromCity} → {trip.toCity}
+                    {cleanCityName(trip.fromCity)} → {cleanCityName(trip.toCity)}
                   </h4>
                   <p className="text-xs text-neutral-500 mt-0.5">
                     {trip.departureDate} · {trip.departureTime}

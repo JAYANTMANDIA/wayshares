@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { connectStorageEmulator, getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -18,8 +19,10 @@ const hasFirebaseConfig = Object.values(firebaseConfig).every(value =>
 export const app = hasFirebaseConfig ? getApps().length ? getApp() : initializeApp(firebaseConfig) : null;
 export const auth = app ? getAuth(app) : null;
 export const db = app ? getFirestore(app) : null;
+export const storage = app ? getStorage(app) : null;
 
 if (app && import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
   connectAuthEmulator(auth!, 'http://127.0.0.1:9099');
   connectFirestoreEmulator(db!, '127.0.0.1', 8080);
+  connectStorageEmulator(storage!, '127.0.0.1', 9199);
 }

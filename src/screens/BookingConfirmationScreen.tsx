@@ -1,19 +1,23 @@
 import React, { useEffect } from 'react';
 import { motion } from 'motion/react';
 import confetti from 'canvas-confetti';
-import { CheckCircle2, Navigation, Compass, Calendar, MapPin, Users } from 'lucide-react';
+import { CheckCircle2, Navigation, Compass } from 'lucide-react';
 import { AppScreen, Booking } from '../types';
+import { cleanCityName } from '../lib/cleanCityName';
 
 interface BookingConfirmationScreenProps {
   booking: Booking;
   onNavigate: (screen: AppScreen) => void;
+  onTrackRide: () => void;
 }
 
 export const BookingConfirmationScreen: React.FC<BookingConfirmationScreenProps> = ({
   booking,
-  onNavigate
+  onNavigate,
+  onTrackRide
 }) => {
   useEffect(() => {
+    if (booking.bookingStatus !== 'CONFIRMED') return;
     // Launch celebratory confetti
     try {
       confetti({
@@ -35,16 +39,22 @@ export const BookingConfirmationScreen: React.FC<BookingConfirmationScreenProps>
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ type: 'spring', damping: 15, stiffness: 200 }}
-          className="w-20 h-20 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4 border-2 border-emerald-200 shadow-sm"
+          className={`w-20 h-20 rounded-full flex items-center justify-center mb-4 border-2 shadow-sm ${
+            booking.bookingStatus === 'CONFIRMED'
+              ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+              : 'bg-amber-50 text-amber-600 border-amber-200'
+          }`}
         >
           <CheckCircle2 className="w-10 h-10" />
         </motion.div>
 
         <h2 className="text-2xl font-black text-black tracking-tight">
-          Booking Confirmed!
+          {booking.bookingStatus === 'CONFIRMED' ? 'Booking Confirmed!' : 'Waiting for Driver Confirmation'}
         </h2>
         <p className="text-xs text-neutral-500 mt-1 max-w-[280px]">
-          Your seat has been reserved. Driver and vehicle details are available below.
+          {booking.bookingStatus === 'CONFIRMED'
+            ? 'Your ride is confirmed. Driver and vehicle details are available below.'
+            : 'Your seat is reserved. The driver will confirm the ride after verifying they received your payment.'}
         </p>
 
         {/* Reference Pill */}
@@ -57,7 +67,7 @@ export const BookingConfirmationScreen: React.FC<BookingConfirmationScreenProps>
           <div className="flex items-start justify-between border-b border-neutral-200/80 pb-3">
             <div>
               <h4 className="text-sm font-bold text-black">
-                {booking.fromCity} → {booking.toCity}
+                {cleanCityName(booking.fromCity)} → {cleanCityName(booking.toCity)}
               </h4>
               <p className="text-xs text-neutral-500 mt-0.5">
                 {booking.departureDate} • {booking.departureTime}
@@ -89,19 +99,28 @@ export const BookingConfirmationScreen: React.FC<BookingConfirmationScreenProps>
               {booking.pickupLocation}
             </span>
           </div>
+
+          <div className="text-xs border-t border-neutral-200/80 pt-2.5">
+            <span className="text-neutral-400 block text-[10px] uppercase font-bold">Payment</span>
+            <span className="font-semibold text-neutral-800 text-[11px]">
+              {(booking.paymentMethod || 'upi').toUpperCase()} • ₹{booking.amount} • {booking.paymentStatus === 'PAID' ? 'Received' : booking.paymentMethod === 'cash' ? 'Due at pickup; awaiting driver confirmation' : 'Awaiting driver confirmation'}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* Action Buttons */}
       <div className="space-y-3 pt-6">
-        <button
-          onClick={() => onNavigate('ride_tracking')}
-          id="track-ride-live-button"
-          className="w-full bg-black hover:bg-neutral-800 active:scale-[0.98] text-white font-semibold py-3.5 px-4 rounded-xl text-sm transition-all shadow-md flex items-center justify-center gap-2 group cursor-pointer"
-        >
-          <Navigation className="w-4 h-4 text-orange-500 group-hover:scale-110 transition-transform" />
-          <span>Track Ride Live</span>
-        </button>
+        {booking.bookingStatus === 'CONFIRMED' && (
+          <button
+            onClick={onTrackRide}
+            id="track-ride-live-button"
+            className="w-full bg-black hover:bg-neutral-800 active:scale-[0.98] text-white font-semibold py-3.5 px-4 rounded-xl text-sm transition-all shadow-md flex items-center justify-center gap-2 group cursor-pointer"
+          >
+            <Navigation className="w-4 h-4 text-orange-500 group-hover:scale-110 transition-transform" />
+            <span>Track Ride Live</span>
+          </button>
+        )}
 
         <button
           onClick={() => onNavigate('my_trips')}

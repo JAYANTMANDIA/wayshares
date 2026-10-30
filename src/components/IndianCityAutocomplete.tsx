@@ -14,9 +14,10 @@ interface IndianCityAutocompleteProps {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  size?: 'sm' | 'lg';
 }
 
-export const IndianCityAutocomplete: React.FC<IndianCityAutocompleteProps> = ({ id, label, value, onChange }) => {
+export const IndianCityAutocomplete: React.FC<IndianCityAutocompleteProps> = ({ id, label, value, onChange, size = 'sm' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const query = value.trim().toLocaleLowerCase('en-IN');
   const suggestions = query
@@ -25,9 +26,11 @@ export const IndianCityAutocomplete: React.FC<IndianCityAutocompleteProps> = ({ 
       .sort((a, b) => Number(b.name.toLocaleLowerCase('en-IN').startsWith(query)) - Number(a.name.toLocaleLowerCase('en-IN').startsWith(query)))
     : [];
 
+  const isLarge = size === 'lg';
+
   return (
     <div className="relative flex-1">
-      <label htmlFor={id} className="text-[10px] font-bold text-neutral-400 uppercase block">{label}</label>
+      <label htmlFor={id} className={`${isLarge ? 'text-xs' : 'text-[10px]'} font-bold text-neutral-500 uppercase tracking-wide block`}>{label}</label>
       <input
         type="text"
         id={id}
@@ -40,7 +43,7 @@ export const IndianCityAutocomplete: React.FC<IndianCityAutocompleteProps> = ({ 
         onFocus={() => setIsOpen(true)}
         onBlur={() => window.setTimeout(() => setIsOpen(false), 100)}
         onChange={(event) => { onChange(event.target.value); setIsOpen(true); }}
-        className="w-full text-xs font-semibold text-neutral-900 bg-transparent outline-hidden"
+        className={`w-full font-semibold text-neutral-900 bg-transparent outline-hidden placeholder:text-neutral-400 ${isLarge ? 'mt-1 text-base leading-7 min-h-8' : 'text-xs'}`}
         placeholder="Type an Indian city"
       />
       {isOpen && query && (
@@ -57,13 +60,13 @@ export const IndianCityAutocomplete: React.FC<IndianCityAutocompleteProps> = ({ 
               aria-selected={city.name === value}
               onPointerDown={(event) => event.preventDefault()}
               onClick={() => { onChange(city.name); setIsOpen(false); }}
-              className="block w-full border-b border-neutral-100 px-3 py-2 text-left last:border-0 hover:bg-orange-50"
+              className={`block w-full border-b border-neutral-100 text-left last:border-0 hover:bg-orange-50 ${isLarge ? 'px-3.5 py-2.5' : 'px-3 py-2'}`}
             >
-              <span className="block text-xs font-semibold text-neutral-900">{city.name}</span>
-              <span className="block text-[10px] text-neutral-500">{city.state}</span>
+              <span className={`block font-semibold text-neutral-900 ${isLarge ? 'text-sm' : 'text-xs'}`}>{city.name}</span>
+              <span className={`block text-neutral-500 ${isLarge ? 'text-xs' : 'text-[10px]'}`}>{city.state}</span>
             </button>
           )) : (
-            <p className="px-3 py-2 text-xs text-neutral-500">No matching cities</p>
+            <p className={`px-3 py-2 text-neutral-500 ${isLarge ? 'text-sm' : 'text-xs'}`}>No matching cities</p>
           )}
         </div>
       )}

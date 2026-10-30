@@ -22,6 +22,7 @@ import { RateDriverModal } from '../components/RateDriverModal';
 interface ChatScreenProps {
   onNavigate: (screen: AppScreen) => void;
   defaultDriverId?: string;
+  bookingId?: string;
 }
 
 const QUICK_PROMPTS = [
@@ -32,7 +33,7 @@ const QUICK_PROMPTS = [
   'Which color is the car?'
 ];
 
-export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDriverId }) => {
+export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDriverId, bookingId }) => {
   const [conversations, setConversations] = useState<ChatConversation[]>(store.conversations);
   const [selectedConvId, setSelectedConvId] = useState<string>(() => {
     if (defaultDriverId) {
@@ -45,37 +46,77 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
   const [showCallModal, setShowCallModal] = useState<boolean>(false);
   const [showRateModal, setShowRateModal] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'chat' | 'list'>('chat');
+  const [isChatLoading, setIsChatLoading] = useState(Boolean(bookingId));
+  const [isSending, setIsSending] = useState(false);
+  const [chatError, setChatError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Subscribe to store updates
   useEffect(() => {
     const unsubscribe = store.subscribe(() => {
       setConversations([...store.conversations]);
     });
-    return unsubscribe;
-  }, []);
+    if (!bookingId) return unsubscribe;
 
-  const activeConv = conversations.find((c) => c.id === selectedConvId) || conversations[0];
+    let isMounted = true;
+    setSelectedConvId(bookingId);
+    const loadConversation = async () => {
+      try {
+        await store.fetchBookingConversation(bookingId);
+        if (isMounted) setChatError('');
+      } catch (error) {
+        if (isMounted) setChatError(error instanceof Error ? error.message : 'Unable to load this booking chat');
+      } finally {
+        if (isMounted) setIsChatLoading(false);
+      }
+    };
+    void loadConversation();
+    const refresh = window.setInterval(() => void loadConversation(), 5000);
+    return () => {
+      isMounted = false;
+      window.clearInterval(refresh);
+      unsubscribe();
+    };
+  }, [bookingId]);
+
+  const activeConv = bookingId
+    ? conversations.find((c) => c.id === bookingId)
+    : conversations.find((c) => c.id === selectedConvId) || conversations[0];
   const activeMessages = Array.isArray(activeConv?.messages) ? activeConv.messages : [];
+  const peerName = activeConv?.peerName || activeConv?.driverName || 'Driver';
+  const peerPhoto = activeConv?.peerPhoto || activeConv?.driverPhoto || '';
 
   // Mark as read when active
   useEffect(() => {
-    if (activeConv && activeConv.unreadCount > 0) {
+    if (!bookingId && activeConv && activeConv.unreadCount > 0) {
       store.markConversationRead(activeConv.id);
     }
-  }, [activeConv?.id]);
+  }, [activeConv?.id, bookingId]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeMessages.length]);
 
-  const handleSend = (textToSend?: string) => {
+  const handleSend = async (textToSend?: string) => {
     const text = textToSend || inputText;
     if (!text.trim() || !activeConv) return;
 
-    store.sendMessage(activeConv.id, text.trim());
-    setInputText('');
+    if (!bookingId) {
+      store.sendMessage(activeConv.id, text.trim());
+      setInputText('');
+      return;
+    }
+
+    setIsSending(true);
+    setChatError('');
+    try {
+      await store.sendBookingMessage(bookingId, text.trim());
+      setInputText('');
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : 'Unable to send message');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleSelectConv = (convId: string) => {
@@ -91,7 +132,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                if (viewMode === 'chat' && conversations.length > 1) {
+                if (!bookingId && viewMode === 'chat' && conversations.length > 1) {
                   setViewMode('list');
                 } else {
                   onNavigate('home');
@@ -104,13 +145,13 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
 
             {viewMode === 'chat' && activeConv ? (
               <div
-                onClick={() => setViewMode('list')}
-                className="flex items-center gap-2.5 cursor-pointer group"
+                onClick={() => !bookingId && setViewMode('list')}
+                className={`flex items-center gap-2.5 group ${bookingId ? '' : 'cursor-pointer'}`}
               >
                 <div className="relative">
                   <img
-                    src={activeConv.driverPhoto}
-                    alt={activeConv.driverName}
+                    src={peerPhoto || undefined}
+                    alt={peerName}
                     className="w-10 h-10 rounded-full object-cover border border-neutral-200 group-hover:ring-2 group-hover:ring-orange-500/40 transition-all"
                   />
                   {activeConv.isOnline && (
@@ -120,11 +161,13 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
                 <div>
                   <div className="flex items-center gap-1.5">
                     <h3 className="text-sm font-bold text-neutral-900 leading-tight">
-                      {activeConv.driverName}
+                      {peerName}
                     </h3>
-                    <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-1.5 py-0.2 rounded-sm">
-                      {activeConv.driverRating} ★
-                    </span>
+                    {!bookingId && (
+                      <span className="text-[10px] font-bold bg-amber-100 text-amber-900 px-1.5 py-0.2 rounded-sm">
+                        {activeConv.driverRating} ★
+                      </span>
+                    )}
                   </div>
                   <p className="text-[11px] text-neutral-500 line-clamp-1">
                     {activeConv.isOnline ? 'Online • In Highway Transit' : 'Offline'}
@@ -144,20 +187,20 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
           {/* Right Header Actions */}
           {viewMode === 'chat' && activeConv && (
             <div className="flex items-center gap-1">
-              <button
+              {!bookingId && <button
                 onClick={() => setShowRateModal(true)}
                 className="text-[11px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-amber-200 transition-colors"
               >
                 <span>★ Rate</span>
-              </button>
+              </button>}
 
-              <button
+              {!bookingId && <button
                 onClick={() => setShowCallModal(true)}
                 className="w-8 h-8 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 flex items-center justify-center border border-emerald-200 transition-colors"
                 title="Call driver"
               >
                 <Phone className="w-4 h-4" />
-              </button>
+              </button>}
 
               <button
                 onClick={() => onNavigate('safety')}
@@ -192,7 +235,13 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
       </div>
 
       {/* Main Content Area */}
-      {!activeConv ? (
+      {bookingId && (isChatLoading || chatError) ? (
+        <div className="flex-1 flex items-center justify-center px-6 text-center">
+          <p role={chatError ? 'alert' : undefined} className={`text-xs ${chatError ? 'text-rose-700' : 'text-neutral-500'}`}>
+            {isChatLoading ? 'Loading booking chat…' : chatError}
+          </p>
+        </div>
+      ) : !activeConv ? (
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 text-center">
           <div className="w-14 h-14 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center mb-4">
             <MessageSquare className="w-7 h-7" />
@@ -230,8 +279,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
               <div className="flex items-center gap-3">
                 <div className="relative">
                   <img
-                    src={conv.driverPhoto}
-                    alt={conv.driverName}
+                    src={conv.peerPhoto || conv.driverPhoto || undefined}
+                    alt={conv.peerName || conv.driverName}
                     className="w-12 h-12 rounded-full object-cover border border-neutral-200"
                   />
                   {conv.isOnline && (
@@ -242,7 +291,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-bold text-neutral-900 truncate">
-                      {conv.driverName}
+                      {conv.peerName || conv.driverName}
                     </h4>
                     <span className="text-[10px] text-neutral-400 font-medium">
                       {conv.lastMessageTime}
@@ -276,7 +325,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
             <div className="text-center py-1">
               <span className="inline-flex items-center gap-1 text-[10px] font-medium text-neutral-500 bg-neutral-100 px-3 py-1 rounded-full">
                 <Shield className="w-3 h-3 text-emerald-600" />
-                <span>End-to-end encrypted carpool safety channel</span>
+                <span>{bookingId ? 'Only this booking’s passenger and driver can access this chat' : 'Carpool safety channel'}</span>
               </span>
             </div>
 
@@ -291,8 +340,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
                 >
                   {!isUser && (
                     <img
-                      src={activeConv.driverPhoto}
-                      alt={activeConv.driverName}
+                      src={peerPhoto || undefined}
+                      alt={peerName}
                       className="w-6 h-6 rounded-full object-cover shrink-0 mb-1 border border-neutral-200"
                     />
                   )}
@@ -329,7 +378,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
               <button
                 key={i}
                 type="button"
-                onClick={() => handleSend(prompt)}
+                onClick={() => void handleSend(prompt)}
                 className="shrink-0 text-xs px-2.5 py-1 bg-neutral-100 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 text-neutral-600 rounded-full font-medium border border-neutral-200/60 transition-colors whitespace-nowrap"
               >
                 {prompt}
@@ -339,21 +388,22 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
 
           {/* Sticky Input Footer */}
           <div className="sticky bottom-0 bg-white border-t border-neutral-200 px-3 py-2.5 flex items-center gap-2">
+            {chatError && <p role="alert" className="absolute bottom-16 left-4 right-4 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{chatError}</p>}
             <input
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder={`Message ${activeConv.driverName.split(' ')[0]}...`}
+              onKeyDown={(e) => e.key === 'Enter' && void handleSend()}
+              placeholder={`Message ${peerName.split(' ')[0]}...`}
               className="flex-1 text-xs py-2.5 px-3.5 bg-neutral-50 rounded-xl border border-neutral-200 focus:outline-hidden focus:border-orange-500 focus:bg-white text-neutral-900 placeholder:text-neutral-400"
             />
 
             <motion.button
               whileTap={{ scale: 0.92 }}
-              onClick={() => handleSend()}
-              disabled={!inputText.trim()}
+              onClick={() => void handleSend()}
+              disabled={!inputText.trim() || isSending}
               className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
-                inputText.trim()
+                inputText.trim() && !isSending
                   ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-xs'
                   : 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
               }`}
@@ -365,7 +415,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
       )}
 
       {/* Simulated Audio Call Modal */}
-      {showCallModal && activeConv && (
+      {!bookingId && showCallModal && activeConv && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -374,15 +424,15 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
           >
             <div className="relative mx-auto w-20 h-20">
               <img
-                src={activeConv.driverPhoto}
-                alt={activeConv.driverName}
+                src={peerPhoto || undefined}
+                alt={peerName}
                 className="w-20 h-20 rounded-full object-cover border-2 border-orange-500"
               />
               <span className="absolute inset-0 rounded-full border-2 border-emerald-400 animate-ping opacity-75" />
             </div>
 
             <div>
-              <h4 className="text-lg font-bold">{activeConv.driverName}</h4>
+              <h4 className="text-lg font-bold">{peerName}</h4>
               <p className="text-xs text-neutral-400">{activeConv.vehicleMakeModel}</p>
               <span className="inline-block mt-2 text-xs font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800/80 px-2.5 py-0.5 rounded-full">
                 Calling via In-App VOIP (Number Masked)
@@ -406,7 +456,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ onNavigate, defaultDrive
       )}
 
       {/* Rate Driver Modal */}
-      {showRateModal && activeConv && (
+      {!bookingId && showRateModal && activeConv && (
         <RateDriverModal
           isOpen={showRateModal}
           onClose={() => setShowRateModal(false)}

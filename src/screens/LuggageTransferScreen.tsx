@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { TopBar } from '../components/TopBar';
 import { CityRouteMap } from '../components/CityRouteMap';
-import { IndianCityAutocomplete, INDIAN_CITIES } from '../components/IndianCityAutocomplete';
+import { LocationAutocomplete, type LocationSuggestion } from '../components/LocationAutocomplete';
 import { AppScreen } from '../types';
 import { store } from '../services/store';
 import { fetchRoadRoute } from '../lib/indiaRoute';
@@ -84,6 +84,8 @@ const CARGO_TIERS: CargoTier[] = [
 export const LuggageTransferScreen: React.FC<LuggageTransferScreenProps> = ({ onNavigate, onSearchRides }) => {
   const [pickupCity, setPickupCity] = useState('');
   const [dropoffCity, setDropoffCity] = useState('');
+  const [selectedPickupCity, setSelectedPickupCity] = useState<LocationSuggestion | null>(null);
+  const [selectedDropoffCity, setSelectedDropoffCity] = useState<LocationSuggestion | null>(null);
   const [deliveryDate, setDeliveryDate] = useState('');
   const [pickupTime, setPickupTime] = useState('');
   const [senderAddress, setSenderAddress] = useState('');
@@ -108,13 +110,15 @@ export const LuggageTransferScreen: React.FC<LuggageTransferScreenProps> = ({ on
       setRouteError('Select a pickup date and time first.');
       return;
     }
-    const pickup = INDIAN_CITIES.find((city) => city.name.toLowerCase() === pickupCity.trim().toLowerCase());
-    const dropoff = INDIAN_CITIES.find((city) => city.name.toLowerCase() === dropoffCity.trim().toLowerCase());
-    if (!pickup || !dropoff) {
-      setRouteError('Choose both cities from the suggestions to preview the route.');
+    if (!selectedPickupCity) {
+      setRouteError('Choose a pickup city from the suggestions.');
       return;
     }
-    if (pickup.name === dropoff.name) {
+    if (!selectedDropoffCity) {
+      setRouteError('Choose a delivery city from the suggestions.');
+      return;
+    }
+    if (selectedPickupCity.id === selectedDropoffCity.id) {
       setRouteError('Pickup and dropoff cities must be different.');
       return;
     }
@@ -122,8 +126,8 @@ export const LuggageTransferScreen: React.FC<LuggageTransferScreenProps> = ({ on
     setRouteError('');
     try {
       onSearchRides({
-        fromCity: pickup.name,
-        toCity: dropoff.name,
+        fromCity: pickupCity.trim(),
+        toCity: dropoffCity.trim(),
         date: deliveryDate,
         passengers: 1,
         luggage: true
@@ -167,7 +171,13 @@ export const LuggageTransferScreen: React.FC<LuggageTransferScreenProps> = ({ on
                   <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">1. Pickup and delivery route</p>
                   <div className="flex items-center gap-2">
                     <MapPin className="h-4 w-4 shrink-0 text-emerald-600" />
-                    <IndianCityAutocomplete id="cargo-pickup-city" label="Pickup city" value={pickupCity} onChange={(value) => { setPickupCity(value); setRoute(null); setRouteError(''); }} />
+                    <LocationAutocomplete
+                      id="cargo-pickup-city"
+                      label="Pickup city"
+                      value={pickupCity}
+                      onChange={(value) => { setPickupCity(value); setSelectedPickupCity(null); setRoute(null); setRouteError(''); }}
+                      onSelectLocation={(loc) => { setPickupCity(loc.displayName); setSelectedPickupCity(loc); setRoute(null); setRouteError(''); }}
+                    />
                   </div>
                   <input
                     type="text"
@@ -179,7 +189,13 @@ export const LuggageTransferScreen: React.FC<LuggageTransferScreenProps> = ({ on
                   <div className="h-px bg-neutral-200" />
                   <div className="flex items-center gap-2">
                     <MapPin className="h-4 w-4 shrink-0 text-rose-600" />
-                    <IndianCityAutocomplete id="cargo-dropoff-city" label="Delivery city" value={dropoffCity} onChange={(value) => { setDropoffCity(value); setRoute(null); setRouteError(''); }} />
+                    <LocationAutocomplete
+                      id="cargo-dropoff-city"
+                      label="Delivery city"
+                      value={dropoffCity}
+                      onChange={(value) => { setDropoffCity(value); setSelectedDropoffCity(null); setRoute(null); setRouteError(''); }}
+                      onSelectLocation={(loc) => { setDropoffCity(loc.displayName); setSelectedDropoffCity(loc); setRoute(null); setRouteError(''); }}
+                    />
                   </div>
                   <input
                     type="text"

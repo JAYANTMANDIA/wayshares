@@ -15,6 +15,7 @@ import { auth } from '../lib/firebase';
 import {
   firebaseErrorMessage,
   saveFirebaseUserProfile,
+  useSessionAuthPersistence,
 } from '../lib/firebaseAuth';
 
 interface LoginScreenProps {
@@ -66,6 +67,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onNavigate }) => {
         setError('Firebase is not configured. Add the Firebase settings to .env.local.');
         return;
       }
+      await useSessionAuthPersistence();
 
       if (mode === 'register') {
         let firebaseUser;
@@ -126,6 +128,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onNavigate }) => {
     setError('');
     setNotice('');
     try {
+      await useSessionAuthPersistence();
       const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
       try {
         if (credential.user.emailVerified) {

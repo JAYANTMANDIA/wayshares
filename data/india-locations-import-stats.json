@@ -1,0 +1,198 @@
+{
+  "importedAt": "2026-10-11T13:14:36.219Z",
+  "source": "India Post open data via aniket-thapa.github.io/india-pincode-api",
+  "license": "India Post open government data; API MIT-licensed",
+  "attribution": "Department of Posts, Government of India",
+  "totalRecords": 162710,
+  "duplicatesSkipped": 2202,
+  "recordsWithCoordinates": 148510,
+  "recordsWithoutCoordinates": 14200,
+  "byType": {
+    "HO": 810,
+    "BO": 137466,
+    "SO": 0,
+    "OTHER": 24434
+  },
+  "byState": {
+    "Andaman And Nicobar Islands": {
+      "total": 100,
+      "withCoords": 25,
+      "districts": 3
+    },
+    "Arunachal Pradesh": {
+      "total": 1170,
+      "withCoords": 1158,
+      "districts": 25
+    },
+    "Andhra Pradesh": {
+      "total": 10456,
+      "withCoords": 7834,
+      "districts": 26
+    },
+    "Bihar": {
+      "total": 9170,
+      "withCoords": 8923,
+      "districts": 38
+    },
+    "Assam": {
+      "total": 4057,
+      "withCoords": 3892,
+      "districts": 34
+    },
+    "Chhattisgarh": {
+      "total": 4317,
+      "withCoords": 4186,
+      "districts": 28
+    },
+    "Delhi": {
+      "total": 550,
+      "withCoords": 543,
+      "districts": 11
+    },
+    "Goa": {
+      "total": 260,
+      "withCoords": 110,
+      "districts": 2
+    },
+    "Gujarat": {
+      "total": 8676,
+      "withCoords": 8469,
+      "districts": 33
+    },
+    "Haryana": {
+      "total": 2701,
+      "withCoords": 2077,
+      "districts": 22
+    },
+    "Chandigarh": {
+      "total": 53,
+      "withCoords": 53,
+      "districts": 1
+    },
+    "Jammu And Kashmir": {
+      "total": 1615,
+      "withCoords": 953,
+      "districts": 20
+    },
+    "Jharkhand": {
+      "total": 4552,
+      "withCoords": 4227,
+      "districts": 24
+    },
+    "Himachal Pradesh": {
+      "total": 2781,
+      "withCoords": 2717,
+      "districts": 12
+    },
+    "Karnataka": {
+      "total": 9497,
+      "withCoords": 8211,
+      "districts": 31
+    },
+    "Lakshadweep": {
+      "total": 10,
+      "withCoords": 9,
+      "districts": 1
+    },
+    "Kerala": {
+      "total": 5053,
+      "withCoords": 4821,
+      "districts": 14
+    },
+    "Madhya Pradesh": {
+      "total": 10106,
+      "withCoords": 8414,
+      "districts": 52
+    },
+    "Maharashtra": {
+      "total": 13355,
+      "withCoords": 12495,
+      "districts": 36
+    },
+    "Ladakh": {
+      "total": 119,
+      "withCoords": 77,
+      "districts": 2
+    },
+    "Manipur": {
+      "total": 784,
+      "withCoords": 778,
+      "districts": 16
+    },
+    "Meghalaya": {
+      "total": 926,
+      "withCoords": 549,
+      "districts": 11
+    },
+    "Mizoram": {
+      "total": 456,
+      "withCoords": 381,
+      "districts": 11
+    },
+    "Nagaland": {
+      "total": 403,
+      "withCoords": 398,
+      "districts": 12
+    },
+    "Odisha": {
+      "total": 8753,
+      "withCoords": 7761,
+      "districts": 30
+    },
+    "Puducherry": {
+      "total": 95,
+      "withCoords": 94,
+      "districts": 4
+    },
+    "Rajasthan": {
+      "total": 10877,
+      "withCoords": 10006,
+      "districts": 33
+    },
+    "Punjab": {
+      "total": 3773,
+      "withCoords": 3699,
+      "districts": 23
+    },
+    "Sikkim": {
+      "total": 212,
+      "withCoords": 212,
+      "districts": 6
+    },
+    "Tamil Nadu": {
+      "total": 11623,
+      "withCoords": 11422,
+      "districts": 38
+    },
+    "Telangana": {
+      "total": 6125,
+      "withCoords": 5445,
+      "districts": 33
+    },
+    "The Dadra And Nagar Haveli And Daman And Diu": {
+      "total": 52,
+      "withCoords": 51,
+      "districts": 3
+    },
+    "Uttar Pradesh": {
+      "total": 17836,
+      "withCoords": 17003,
+      "districts": 75
+    },
+    "Uttarakhand": {
+      "total": 2720,
+      "withCoords": 2703,
+      "districts": 13
+    },
+    "Tripura": {
+      "total": 723,
+      "withCoords": 101,
+      "districts": 8
+    },
+    "West Bengal": {
+      "total": 8754,
+      "withCoords": 8713,
+      "districts": 23
+    }
+  }
+}

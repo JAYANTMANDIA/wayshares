@@ -189,11 +189,16 @@ export const ShareLocationModal: React.FC<ShareLocationModalProps> = ({ isOpen, 
     setTimeout(() => setCopied(false), 3000);
   };
 
-  const getWhatsAppLink = (contact: SafetyContact) => {
-    if (!session) return '#';
+  const getWhatsAppMessage = (contact: SafetyContact) => {
+    if (!session) return { phone: '', text: '' };
     const phone = contact.phoneNumber.replace(/\D/g, '');
     const message = `I'm sharing my live location with you: ${session.locationUrl}`;
-    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    return { phone, text: encodeURIComponent(message) };
+  };
+
+  const getWhatsAppAppLink = (contact: SafetyContact) => {
+    const message = getWhatsAppMessage(contact);
+    return `whatsapp://send?phone=${message.phone}&text=${message.text}`;
   };
 
   if (!isOpen) return null;
@@ -335,15 +340,15 @@ export const ShareLocationModal: React.FC<ShareLocationModalProps> = ({ isOpen, 
                             <p className="text-sm font-bold text-black leading-tight">{contact.contactName}</p>
                             <p className="text-[11px] text-neutral-500">{contact.phoneNumber}</p>
                           </div>
-                          <a href={getWhatsAppLink(contact)} target="_blank" rel="noopener noreferrer"
+                          <a href={getWhatsAppAppLink(contact)}
                             className="ml-auto flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-3 py-2 text-xs font-semibold">
-                            <ExternalLink className="w-3.5 h-3.5" /> WhatsApp
+                            <ExternalLink className="w-3.5 h-3.5" /> Open WhatsApp
                           </a>
                         </div>
                     ))}
                   </div>
                 )}
-                <p className="text-[11px] text-neutral-500 mt-2">WhatsApp opens using the account signed in on this device. Review the message and tap Send.</p>
+                <p className="text-[11px] text-neutral-500 mt-2">Open the installed WhatsApp app, review the prepared message, and tap Send.</p>
               </div>
             </>
           )}

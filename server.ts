@@ -2,7 +2,6 @@ import dotenv from 'dotenv';
 import express from 'express';
 import path from 'node:path';
 import { createServer as createViteServer } from 'vite';
-import { createExpressApp } from './backend/app';
 
 const localServerEnv = dotenv.config({ processEnv: {} }).parsed ?? {};
 for (const [key, value] of Object.entries(localServerEnv)) {
@@ -10,8 +9,12 @@ for (const [key, value] of Object.entries(localServerEnv)) {
     process.env[key] = value;
   }
 }
+if (!process.env.FIREBASE_STORAGE_BUCKET && localServerEnv.VITE_FIREBASE_STORAGE_BUCKET) {
+  process.env.FIREBASE_STORAGE_BUCKET = localServerEnv.VITE_FIREBASE_STORAGE_BUCKET;
+}
 
 async function startServer() {
+  const { createExpressApp } = await import('./backend/app');
   const app = createExpressApp();
   const port = Number(process.env.PORT) || 3000;
   const publicHost = (() => {

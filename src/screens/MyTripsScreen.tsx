@@ -16,26 +16,34 @@ import { TopBar } from '../components/TopBar';
 import { AppScreen, Booking } from '../types';
 import { store } from '../services/store';
 import { RateDriverModal } from '../components/RateDriverModal';
+import { cleanCityName } from '../lib/cleanCityName';
 
 interface MyTripsScreenProps {
   onNavigate: (screen: AppScreen) => void;
+  onOpenBookingChat: (bookingId: string) => void;
+  onTrackRide: (rideId: string) => void;
 }
 
-export const MyTripsScreen: React.FC<MyTripsScreenProps> = ({ onNavigate }) => {
+export const MyTripsScreen: React.FC<MyTripsScreenProps> = ({ onNavigate, onOpenBookingChat, onTrackRide }) => {
   const [bookings, setBookings] = useState<Booking[]>(store.bookings);
   const [activeTab, setActiveTab] = useState<'all' | 'confirmed' | 'completed' | 'cancelled'>('all');
   const [selectedReceipt, setSelectedReceipt] = useState<Booking | null>(null);
   const [ratingBooking, setRatingBooking] = useState<Booking | null>(null);
   const [actionError, setActionError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const update = () => setBookings([...store.bookings]);
-    return store.subscribe(update);
+    const unsubscribe = store.subscribe(update);
+    void store.fetchMyBookings().catch((error) => {
+      setActionError(error instanceof Error ? error.message : 'Unable to load bookings');
+    }).finally(() => setIsLoading(false));
+    return unsubscribe;
   }, []);
 
   const filteredBookings = bookings.filter((b) => {
     if (activeTab === 'all') return true;
-    if (activeTab === 'confirmed') return b.bookingStatus === 'CONFIRMED';
+    if (activeTab === 'confirmed') return b.bookingStatus === 'CONFIRMED' || b.bookingStatus === 'PENDING';
     if (activeTab === 'completed') return b.bookingStatus === 'COMPLETED';
     if (activeTab === 'cancelled') return b.bookingStatus === 'CANCELLED';
     return true;
@@ -53,21 +61,14 @@ export const MyTripsScreen: React.FC<MyTripsScreenProps> = ({ onNavigate }) => {
   };
 
   const handleOpenChat = (bk: Booking) => {
-    store.startOrGetConversationWithDriver(
-      bk.driverId || 'driver_rajesh_01',
-      bk.driverName || 'Driver',
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=250',
-      'Verified Intercity Vehicle',
-      `${bk.fromCity} → ${bk.toCity}`
-    );
-    onNavigate('chat');
+    onOpenBookingChat(bk.id);
   };
 
   return (
     <div className="w-full min-h-[720px] bg-neutral-50 flex flex-col justify-between select-none pb-20">
       <div>
         <TopBar
-          title="My Trips"
+          title="My Bookings"
           onBack={() => onNavigate('home')}
           showMore={true}
         />
@@ -97,7 +98,9 @@ export const MyTripsScreen: React.FC<MyTripsScreenProps> = ({ onNavigate }) => {
 
         {/* Trips List */}
         <div className="px-5 pt-4 space-y-3.5">
-          {filteredBookings.length === 0 ? (
+          {isLoading ? (
+            <p className="text-center py-16 text-sm font-semibold text-neutral-600">Loading your bookings…</p>
+          ) : filteredBookings.length === 0 ? (
             <div className="text-center py-16 px-4 bg-white rounded-2xl border border-neutral-200 shadow-2xs">
               <Calendar className="w-8 h-8 text-neutral-400 mx-auto mb-2" />
               <p className="text-sm font-bold text-neutral-800">No trips in this category</p>
@@ -112,6 +115,7 @@ export const MyTripsScreen: React.FC<MyTripsScreenProps> = ({ onNavigate }) => {
           ) : (
             filteredBookings.map((bk) => {
               const isCompleted = bk.bookingStatus === 'COMPLETED';
+              const isPending = bk.bookingStatus === 'PENDING';
               return (
                 <motion.div
                   key={bk.id}
@@ -123,7 +127,7 @@ export const MyTripsScreen: React.FC<MyTripsScreenProps> = ({ onNavigate }) => {
                   <div className="flex items-start justify-between">
                     <div>
                       <h3 className="text-base font-extrabold text-black tracking-tight leading-tight">
-                        {bk.fromCity} → {bk.toCity}
+                        {cleanCityName(bk.fromCity)} → {cleanCityName(bk.toCity)}
                       </h3>
                       <p className="text-xs text-neutral-500 mt-0.5 font-medium">
                         {bk.departureDate} • {bk.departureTime}
@@ -136,12 +140,20 @@ export const MyTripsScreen: React.FC<MyTripsScreenProps> = ({ onNavigate }) => {
                           ? 'bg-emerald-100 text-emerald-800'
                           : bk.bookingStatus === 'COMPLETED'
                           ? 'bg-neutral-100 text-neutral-700'
+                          : isPending
+                          ? 'bg-amber-100 text-amber-800'
                           : 'bg-rose-100 text-rose-800'
                       }`}
                     >
-                      {bk.bookingStatus}
+                      {isPending ? 'AWAITING DRIVER' : bk.bookingStatus}
                     </span>
                   </div>
+
+                  {isPending && (
+                    <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-800">
+                      The ride will be confirmed after the driver verifies they received your payment.
+                    </p>
+                  )}
 
                   {/* Details grid */}
                   <div className="grid grid-cols-2 gap-2 text-xs bg-neutral-50 p-2.5 rounded-xl border border-neutral-150">
@@ -215,7 +227,7 @@ export const MyTripsScreen: React.FC<MyTripsScreenProps> = ({ onNavigate }) => {
                             Cancel
                           </button>
                           <button
-                            onClick={() => onNavigate('ride_tracking')}
+                            onClick={() => onTrackRide(bk.rideId)}
                             className="bg-black hover:bg-neutral-800 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-2xs"
                           >
                             <Navigation className="w-3.5 h-3.5 text-orange-400" />
@@ -265,12 +277,12 @@ export const MyTripsScreen: React.FC<MyTripsScreenProps> = ({ onNavigate }) => {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <span className="text-neutral-400 block text-[10px] uppercase font-bold">From</span>
-                  <span className="font-bold text-neutral-900">{selectedReceipt.fromCity}</span>
+                  <span className="font-bold text-neutral-900">{cleanCityName(selectedReceipt.fromCity)}</span>
                   <p className="text-[10px] text-neutral-500">{selectedReceipt.pickupLocation}</p>
                 </div>
                 <div>
                   <span className="text-neutral-400 block text-[10px] uppercase font-bold">To</span>
-                  <span className="font-bold text-neutral-900">{selectedReceipt.toCity}</span>
+                  <span className="font-bold text-neutral-900">{cleanCityName(selectedReceipt.toCity)}</span>
                   <p className="text-[10px] text-neutral-500">{selectedReceipt.dropLocation}</p>
                 </div>
               </div>
@@ -281,7 +293,7 @@ export const MyTripsScreen: React.FC<MyTripsScreenProps> = ({ onNavigate }) => {
                   <span className="font-bold text-neutral-900">{selectedReceipt.driverName}</span>
                 </div>
                 <div>
-                  <span className="text-neutral-400 block text-[10px] uppercase font-bold">Fare Paid</span>
+                  <span className="text-neutral-400 block text-[10px] uppercase font-bold">Fare</span>
                   <span className="font-bold text-neutral-900">₹{selectedReceipt.amount}</span>
                 </div>
               </div>
@@ -307,7 +319,7 @@ export const MyTripsScreen: React.FC<MyTripsScreenProps> = ({ onNavigate }) => {
           driverName={ratingBooking.driverName}
           driverPhoto="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=250"
           vehicleInfo="Maruti Swift Dzire"
-          route={`${ratingBooking.fromCity} → ${ratingBooking.toCity}`}
+          route={`${cleanCityName(ratingBooking.fromCity)} → ${cleanCityName(ratingBooking.toCity)}`}
           bookingId={ratingBooking.id}
         />
       )}

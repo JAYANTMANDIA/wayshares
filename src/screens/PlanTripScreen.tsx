@@ -17,6 +17,7 @@ import {
 import { TopBar } from '../components/TopBar';
 import { AppScreen } from '../types';
 import { store } from '../services/store';
+import { CityRoutePreview } from '../components/CityRouteMap';
 
 interface PlanTripScreenProps {
   onNavigate: (screen: AppScreen) => void;
@@ -272,6 +273,8 @@ export const PlanTripScreen: React.FC<PlanTripScreenProps> = ({
               </div>
 
             </div>
+
+            <CityRoutePreview origin={fromCity} destination={toCity} pickup={pickupSpot || fromCity} dropoff={dropSpot || toCity} />
 
             {/* 2. TIME WHEN TO LEAVE */}
             <div className="space-y-2.5">

@@ -19,7 +19,7 @@ export const SelectSeatScreen: React.FC<SelectSeatScreenProps> = ({
 }) => {
   // Default to [3] matching Screenshot 8 if empty
   const [currentSelected, setCurrentSelected] = useState<number[]>(
-    selectedSeats.length > 0 ? selectedSeats : [3]
+    selectedSeats.length > 0 ? selectedSeats : []
   );
   const [error, setError] = useState('');
 
@@ -43,7 +43,7 @@ export const SelectSeatScreen: React.FC<SelectSeatScreenProps> = ({
     }
   };
 
-  const occupiedList = ride.occupiedSeats || [2]; // Seat 2 is occupied as in screenshot 8
+  const occupiedList = ride.occupiedSeats || [];
 
   const handleSeatClick = (seatNum: number) => {
     if (occupiedList.includes(seatNum)) {

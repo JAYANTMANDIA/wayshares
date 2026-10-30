@@ -1,6 +1,7 @@
 import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import type { ServiceAccount } from 'firebase-admin/app';
 
 const projectId = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT;
@@ -59,4 +60,8 @@ if (!getApps().length) {
 
 export const adminAuth = getAuth();
 export const db = getFirestore();
+export function getVerificationStorageBucket() {
+  const bucketName = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET;
+  return getStorage().bucket(bucketName || undefined);
+}
 export { FieldValue };

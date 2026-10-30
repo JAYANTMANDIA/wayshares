@@ -19,6 +19,7 @@ import { TrustedContactsScreen } from './screens/TrustedContactsScreen';
 import { MyTripsScreen } from './screens/MyTripsScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { DriverDashboardScreen } from './screens/DriverDashboardScreen';
+import { DriverBookingsScreen } from './screens/DriverBookingsScreen';
 import { CreateRideScreen } from './screens/CreateRideScreen';
 import { DriverVerificationScreen } from './screens/DriverVerificationScreen';
 import { AdminDashboardScreen } from './screens/AdminDashboardScreen';
@@ -28,6 +29,7 @@ import { CityRideScreen } from './screens/CityRideScreen';
 import { LuggageTransferScreen } from './screens/LuggageTransferScreen';
 import { ScheduleRideScreen } from './screens/ScheduleRideScreen';
 import { ChatScreen } from './screens/ChatScreen';
+import { canAccessAdminPortal } from './lib/adminAccess';
 
 export function App() {
   const [currentScreen, setCurrentScreen] = useState<AppScreen>('splash');
@@ -37,7 +39,12 @@ export function App() {
     toCity: '',
     date: '',
     passengers: 1,
-    luggage: false
+    luggage: false,
+    fromLat: null as number | null,
+    fromLon: null as number | null,
+    toLat: null as number | null,
+    toLon: null as number | null,
+    passengerPrefs: [] as string[],
   });
 
   const [selectedRide, setSelectedRide] = useState<Ride | null>(null);
@@ -45,9 +52,22 @@ export function App() {
   const [selectedSeats, setSelectedSeats] = useState<number[]>([]);
 
   const [lastBooking, setLastBooking] = useState<Booking | null>(null);
+  const [chatBookingId, setChatBookingId] = useState<string | null>(null);
+  const [trackingRideId, setTrackingRideId] = useState<string | null>(null);
 
   const handleNavigate = (screen: AppScreen) => {
+    if (screen !== 'chat') setChatBookingId(null);
     setCurrentScreen(screen);
+  };
+
+  const handleOpenBookingChat = (bookingId: string) => {
+    setChatBookingId(bookingId);
+    setCurrentScreen('chat');
+  };
+
+  const handleTrackRide = (rideId: string) => {
+    setTrackingRideId(rideId);
+    setCurrentScreen('ride_tracking');
   };
 
   const handleSelectRecentTrip = (from: string, to: string) => {
@@ -138,10 +158,11 @@ export function App() {
           <BookingConfirmationScreen
             booking={lastBooking}
             onNavigate={handleNavigate}
+            onTrackRide={() => handleTrackRide(lastBooking.rideId)}
           />
-        ) : <MyTripsScreen onNavigate={handleNavigate} />;
+        ) : <MyTripsScreen onNavigate={handleNavigate} onOpenBookingChat={handleOpenBookingChat} onTrackRide={handleTrackRide} />;
       case 'ride_tracking':
-        return <RideTrackingScreen onNavigate={handleNavigate} />;
+        return <RideTrackingScreen onNavigate={handleNavigate} onOpenBookingChat={handleOpenBookingChat} rideId={trackingRideId || undefined} />;
       case 'safety':
         return (
           <SafetyScreen
@@ -151,19 +172,23 @@ export function App() {
       case 'trusted_contacts':
         return <TrustedContactsScreen onNavigate={handleNavigate} />;
       case 'my_trips':
-        return <MyTripsScreen onNavigate={handleNavigate} />;
+        return <MyTripsScreen onNavigate={handleNavigate} onOpenBookingChat={handleOpenBookingChat} onTrackRide={handleTrackRide} />;
       case 'chat':
-        return <ChatScreen onNavigate={handleNavigate} />;
+        return <ChatScreen onNavigate={handleNavigate} bookingId={chatBookingId || undefined} />;
       case 'profile':
         return <ProfileScreen onNavigate={handleNavigate} />;
       case 'driver_dashboard':
-        return <DriverDashboardScreen onNavigate={handleNavigate} />;
+        return <DriverDashboardScreen onNavigate={handleNavigate} onOpenBookingChat={handleOpenBookingChat} onTrackRide={handleTrackRide} />;
+      case 'driver_bookings':
+        return <DriverBookingsScreen onNavigate={handleNavigate} onOpenBookingChat={handleOpenBookingChat} />;
       case 'create_ride':
         return <CreateRideScreen onNavigate={handleNavigate} />;
       case 'driver_verification':
         return <DriverVerificationScreen onNavigate={handleNavigate} />;
       case 'admin_dashboard':
-        return <AdminDashboardScreen onNavigate={handleNavigate} />;
+        return canAccessAdminPortal(store.user.email)
+          ? <AdminDashboardScreen onNavigate={handleNavigate} />
+          : <HomeScreen onNavigate={handleNavigate} onSelectRecentTrip={handleSelectRecentTrip} />;
       case 'support':
         return <SupportScreen onNavigate={handleNavigate} />;
       case 'notifications':

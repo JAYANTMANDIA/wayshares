@@ -2,6 +2,8 @@
 
 UberX is a React/Vite application served by an Express API. Firebase Authentication provides user identity, Firestore stores server-owned application data, and Razorpay Checkout processes ride payments in INR.
 
+For the proposed large-scale service boundaries, data ownership, event flows, deployment model, and phased migration from the current API, see the [Microservices Architecture Guide](docs/microservices/README.md). It is a target design; the current application is not yet deployed as microservices.
+
 ## Requirements
 
 - Node.js 20.19+ (or 22.12+)
@@ -47,6 +49,26 @@ APP_URL=https://your-public-app.example.com
 TWILIO_ACCOUNT_SID=your_twilio_account_sid
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
 ```
+
+## Configure private Google Drive document storage
+
+Identity images are uploaded by the authenticated server into a private folder in the administrator's Google Drive. Firebase Storage is not used for identity uploads. To connect Drive for local development:
+
+1. In Google Cloud Console, select the same project used for the app, enable the **Google Drive API**, and configure the OAuth consent screen. Add the administrator email as a test user if the app is in Testing mode.
+2. Create an OAuth client ID for a **Web application**. Add `http://localhost:3000/api/admin/drive/callback` as an authorized redirect URI.
+3. Add these server-only settings to `.env` (never prefix them with `VITE_`):
+
+   ```dotenv
+   GOOGLE_DRIVE_CLIENT_ID=your-oauth-client-id
+   GOOGLE_DRIVE_CLIENT_SECRET=your-oauth-client-secret
+   GOOGLE_DRIVE_REDIRECT_ORIGIN=http://localhost:3000
+   WAYSHARE_ADMIN_EMAIL=mandiajayant@gmail.com
+   ```
+
+4. Restart `npm run dev`, sign in to WAYSHARE with the administrator account, open **Profile → Admin Management Console**, and choose **Connect admin Google Drive**. Complete Google's consent flow with the same verified admin email.
+5. Users can then submit identity images from their profile; authorized reviewers view them inside the admin portal. The app requests `drive.file` access and does not make the Drive folder or images public. The OAuth refresh token is kept in a server-only Firestore integration record; browser clients cannot access it under the restrictive Firestore rules.
+
+Do not paste Google passwords, OAuth client secrets, or tokens into chat or commit them. For a deployed app, configure a public HTTPS callback URL in both the Google OAuth client and `GOOGLE_DRIVE_REDIRECT_ORIGIN`; never use the localhost callback in production. Google Drive quota and account storage limits apply.
 
 Live-location sharing prepares a WhatsApp message for each trusted contact and opens WhatsApp on the user's device; the user reviews and taps **Send**. It uses the WhatsApp account signed in on that device, not a server-side sender, and the signup phone is not automatically verified as a WhatsApp number. Set `APP_URL` to the app's public HTTPS address because localhost links cannot be opened by contacts. Check `/api/health` for `publicAppUrlConfigured` before testing.
 
@@ -108,3 +130,42 @@ The project data model is defined in [firestore.schema.json](firestore.schema.js
 - Implement marketplace driver onboarding, commissions, payout/settlement, and refund/cancellation policy before charging real customers. Current Razorpay integration collects and refunds passenger payments; it does not pay drivers.
 - Configure production Firebase providers/domains, Razorpay live credentials and webhook, secret storage, backups, monitoring, rate limiting, abuse controls, and operational support.
 - Safety dispatch, SMS notifications, support-ticket workflows, chat, and admin review screens still need their own production service integrations; they are not represented as successfully delivered by this payment/ride API.
+
+## Proposed Microservices Flow
+
+This is the target architecture, not the current deployment. See the [Microservices Architecture Guide](docs/microservices/README.md) for service responsibilities, data ownership, event contracts, security, and migration phases.
+
+```mermaid
+flowchart LR
+	Client[Passenger / Driver Web App] --> Edge[CDN + WAF]
+	Edge --> Gateway[API Gateway / Web BFF]
+	Gateway --> Firebase[Firebase Authentication]
+	Gateway --> Profile[Profile & Trust]
+	Gateway --> Rides[Ride Catalog]
+	Gateway --> Booking[Booking & Inventory]
+	Gateway --> Payment[Payment & Ledger]
+	Gateway --> Location[Location & Tracking]
+	Gateway --> Chat[Booking Chat]
+	Gateway --> Reviews[Review & Rating]
+	Gateway --> Safety[Safety & Contacts]
+
+	Profile --> ProfileDB[(Profile Store)]
+	Rides --> RideDB[(Ride Store / PostGIS)]
+	Booking --> BookingDB[(Booking Store)]
+	Payment --> PaymentDB[(Payment Ledger)]
+	Location --> Geo[(Ephemeral Geo Store)]
+	Chat --> ChatDB[(Chat Store)]
+	Reviews --> ReviewDB[(Review Store)]
+	Safety --> SafetyDB[(Safety Store)]
+
+	Rides --> Events[Event Bus]
+	Booking --> Events
+	Payment --> Events
+	Location --> Events
+	Chat --> Events
+	Reviews --> Events
+	Events --> Notifications[Notification Workers]
+	Events --> Search[Ride Search Read Model]
+	Payment <--> Razorpay[Razorpay]
+	Rides --> Maps[Geocoding / Routing Provider]
+```

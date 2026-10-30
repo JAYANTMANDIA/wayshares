@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# India location dataset — regenerate with: node scripts/import-india-locations.mjs
+data/india-locations.ndjson

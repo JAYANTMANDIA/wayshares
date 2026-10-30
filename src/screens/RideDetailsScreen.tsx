@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   Clock,
   MapPin,
   Briefcase,
   Star,
-  MessageSquare,
   ShieldCheck,
   ChevronRight,
   Sparkles,
@@ -16,8 +15,10 @@ import {
 } from 'lucide-react';
 import { TopBar } from '../components/TopBar';
 import { AppScreen, Ride, Review } from '../types';
-import { RateDriverModal } from '../components/RateDriverModal';
 import { store } from '../services/store';
+import { CityRouteMap } from '../components/CityRouteMap';
+import { fetchRoadRoute, RoadRoute } from '../lib/indiaRoute';
+import { cleanCityName } from '../lib/cleanCityName';
 
 interface RideDetailsScreenProps {
   ride: Ride;
@@ -32,44 +33,10 @@ export const RideDetailsScreen: React.FC<RideDetailsScreenProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'reviews'>('details');
   const [selectedFilter, setSelectedFilter] = useState<'all' | '5' | '4'>('all');
-  const [showRateModal, setShowRateModal] = useState<boolean>(false);
+  const [roadRoute, setRoadRoute] = useState<RoadRoute | null>(null);
+  const [routeError, setRouteError] = useState('');
 
-  // Combine default and live reviews from the ride
-  const allReviews: Review[] = ride.reviews && ride.reviews.length > 0 ? ride.reviews : [
-    {
-      id: 'rev_default_01',
-      rideId: ride.id,
-      reviewerId: 'user_karthik',
-      reviewerName: 'Karthik S.',
-      driverId: ride.driverId,
-      rating: 5,
-      comment: 'Excellent driving discipline on the expressway. Reached before estimated time safely.',
-      createdAt: '2 days ago',
-      tags: ['Smooth & Safe Driving', 'On-Time Departure']
-    },
-    {
-      id: 'rev_default_02',
-      rideId: ride.id,
-      reviewerId: 'user_deepa',
-      reviewerName: 'Deepa V.',
-      driverId: ride.driverId,
-      rating: 5,
-      comment: 'Very polite driver and smooth highway ride. Car was spotless with pleasant air conditioning.',
-      createdAt: '5 days ago',
-      tags: ['Clean & Sanitized Car', 'Polite & Courteous']
-    },
-    {
-      id: 'rev_default_03',
-      rideId: ride.id,
-      reviewerId: 'user_rahul',
-      reviewerName: 'Rahul M.',
-      driverId: ride.driverId,
-      rating: 4,
-      comment: 'Comfortable commute. Driver maintained steady speeds within speed limits.',
-      createdAt: '1 week ago',
-      tags: ['Expressway Lane Discipline']
-    }
-  ];
+  const allReviews: Review[] = ride.reviews || [];
 
   const filteredReviews = allReviews.filter((r) => {
     if (selectedFilter === '5') return r.rating === 5;
@@ -82,16 +49,17 @@ export const RideDetailsScreen: React.FC<RideDetailsScreenProps> = ({
   const fivePercent = Math.round((ratingFiveCount / Math.max(1, allReviews.length)) * 100);
   const fourPercent = Math.round((ratingFourCount / Math.max(1, allReviews.length)) * 100);
 
-  const handleOpenChatWithDriver = () => {
-    store.startOrGetConversationWithDriver(
-      ride.driverId,
-      ride.driverName,
-      ride.driverPhoto,
-      `${ride.vehicleMakeModel} (${ride.vehicleRegNumber})`,
-      `${ride.fromCity} → ${ride.toCity}`
-    );
-    onNavigate('chat');
-  };
+  useEffect(() => {
+    let cancelled = false;
+    setRoadRoute(null);
+    setRouteError('');
+    void fetchRoadRoute(ride.fromCity, ride.toCity).then((route) => {
+      if (!cancelled) setRoadRoute(route);
+    }).catch((error) => {
+      if (!cancelled) setRouteError(error instanceof Error ? error.message : 'Unable to load road map');
+    });
+    return () => { cancelled = true; };
+  }, [ride.fromCity, ride.toCity]);
 
   return (
     <div className="w-full min-h-[720px] bg-neutral-50 flex flex-col justify-between select-none pb-24 relative">
@@ -133,50 +101,13 @@ export const RideDetailsScreen: React.FC<RideDetailsScreenProps> = ({
         <div className="px-5 space-y-4">
           {activeTab === 'details' ? (
             <>
-              {/* Illustrated Scenic Route Map */}
-              <div className="w-full h-36 rounded-2xl overflow-hidden relative border border-neutral-200/90 shadow-2xs bg-gradient-to-br from-emerald-50 via-teal-50 to-blue-50">
-                <svg className="w-full h-full" viewBox="0 0 360 144" fill="none">
-                  <path
-                    d="M-20 60 C80 30, 160 90, 240 50 C300 20, 360 70, 400 40"
-                    stroke="#D1FAE5"
-                    strokeWidth="24"
-                    strokeLinecap="round"
-                    opacity="0.6"
-                  />
-                  <path
-                    d="M-10 110 C90 80, 190 130, 270 90 C330 60, 370 110, 420 80"
-                    stroke="#E0F2FE"
-                    strokeWidth="18"
-                    strokeLinecap="round"
-                    opacity="0.8"
-                  />
-                  <path
-                    d="M 50 100 C 110 90, 150 45, 220 55 C 270 62, 290 35, 310 35"
-                    stroke="#000000"
-                    strokeWidth="4"
-                    strokeLinecap="round"
-                    strokeDasharray="4 2"
-                  />
-                  <circle cx="50" cy="100" r="7" fill="#000000" />
-                  <circle cx="50" cy="100" r="3" fill="#FFFFFF" />
-                  <circle cx="310" cy="35" r="8" fill="#EF4444" />
-                  <circle cx="310" cy="35" r="3" fill="#FFFFFF" />
-                  <circle cx="120" cy="30" r="8" fill="#10B981" opacity="0.3" />
-                  <circle cx="130" cy="34" r="6" fill="#10B981" opacity="0.4" />
-                  <circle cx="210" cy="95" r="9" fill="#10B981" opacity="0.3" />
-                  <circle cx="222" cy="100" r="7" fill="#10B981" opacity="0.4" />
-                </svg>
-
-                <div className="absolute bottom-2.5 left-3.5 bg-black/85 backdrop-blur-xs text-white text-[11px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span>{ride.fromCity}</span>
+              {roadRoute ? (
+                <CityRouteMap route={roadRoute} pickup={`${ride.pickupLocation}, ${cleanCityName(ride.fromCity)}`} dropoff={`${ride.dropLocation}, ${cleanCityName(ride.toCity)}`} className="h-36" />
+              ) : (
+                <div role={routeError ? 'alert' : undefined} className="h-36 rounded-2xl border border-neutral-200 bg-neutral-100 flex items-center justify-center px-5 text-center text-xs text-neutral-600">
+                  {routeError || 'Loading real road route…'}
                 </div>
-
-                <div className="absolute top-2.5 right-3.5 bg-black/85 backdrop-blur-xs text-white text-[11px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
-                  <span>{ride.toCity}</span>
-                </div>
-              </div>
+              )}
 
               {/* Driver Card with Reliability Score Pill and Direct Chat Action */}
               <div className="p-4 rounded-2xl border border-neutral-200/90 bg-white shadow-2xs space-y-3">
@@ -198,8 +129,12 @@ export const RideDetailsScreen: React.FC<RideDetailsScreenProps> = ({
                         <h3 className="text-base font-extrabold text-black tracking-tight leading-tight">
                           {ride.driverName}
                         </h3>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">
-                          Verified
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md border ${
+                          ride.driverVerified
+                            ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                            : 'text-neutral-600 bg-neutral-50 border-neutral-200'
+                        }`}>
+                          {ride.driverVerified ? 'Verified' : 'Unverified'}
                         </span>
                       </div>
 
@@ -211,7 +146,16 @@ export const RideDetailsScreen: React.FC<RideDetailsScreenProps> = ({
                         <span className="text-neutral-400">•</span>
                         <span className="font-semibold text-neutral-700">{ride.driverTripsCount} verified trips</span>
                         <span className="text-neutral-400">•</span>
-                        <span className="text-emerald-600 font-bold">99% On-Time</span>
+                        {/* Trust Score pill */}
+                        <span className={`font-bold px-1.5 py-0.5 rounded-md border text-[10px] ${
+                          (ride.driverTrustScore ?? 50) >= 80
+                            ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                            : (ride.driverTrustScore ?? 50) >= 55
+                            ? 'text-amber-700 bg-amber-50 border-amber-200'
+                            : 'text-rose-700 bg-rose-50 border-rose-200'
+                        }`}>
+                          🛡️ Trust {ride.driverTrustScore ?? 50}/100
+                        </span>
                       </div>
 
                       <p className="text-xs text-neutral-500 mt-0.5">
@@ -226,16 +170,7 @@ export const RideDetailsScreen: React.FC<RideDetailsScreenProps> = ({
                 </div>
 
                 {/* Quick Driver Action Bar: Message Driver & View Reliability */}
-                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-100">
-                  <motion.button
-                    whileTap={{ scale: 0.96 }}
-                    onClick={handleOpenChatWithDriver}
-                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-xs border border-orange-200/80 transition-colors"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>Chat with Driver</span>
-                  </motion.button>
-
+                <div className="grid grid-cols-1 gap-2 pt-1 border-t border-neutral-100">
                   <button
                     onClick={() => setActiveTab('reviews')}
                     className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-bold text-xs transition-colors"
@@ -253,7 +188,7 @@ export const RideDetailsScreen: React.FC<RideDetailsScreenProps> = ({
                     <Clock className="w-4 h-4" />
                   </div>
                   <span className="text-xs font-bold text-black block leading-tight">
-                    {ride.duration || '3h 15m'}
+                    {ride.duration || '—'}
                   </span>
                   <span className="text-[10px] text-neutral-500 font-medium">Duration</span>
                 </div>
@@ -263,7 +198,7 @@ export const RideDetailsScreen: React.FC<RideDetailsScreenProps> = ({
                     <MapPin className="w-4 h-4" />
                   </div>
                   <span className="text-xs font-bold text-black block leading-tight">
-                    {ride.distance || '145 km'}
+                    {ride.distance || '—'}
                   </span>
                   <span className="text-[10px] text-neutral-500 font-medium">Distance</span>
                 </div>
@@ -273,7 +208,7 @@ export const RideDetailsScreen: React.FC<RideDetailsScreenProps> = ({
                     <Briefcase className="w-4 h-4" />
                   </div>
                   <span className="text-xs font-bold text-black block leading-tight">
-                    {ride.luggageCapacity || '2 bags max'}
+                    {ride.luggageCapacity || '—'}
                   </span>
                   <span className="text-[10px] text-neutral-500 font-medium">Luggage</span>
                 </div>
@@ -295,7 +230,7 @@ export const RideDetailsScreen: React.FC<RideDetailsScreenProps> = ({
                         <h5 className="text-sm font-bold text-black">
                           {ride.pickupLocation}
                         </h5>
-                        <p className="text-xs text-neutral-500">{ride.fromCity}</p>
+                        <p className="text-xs text-neutral-500">{cleanCityName(ride.fromCity)}</p>
                       </div>
                       <span className="text-xs font-bold text-black">
                         {ride.departureTime}
@@ -310,10 +245,10 @@ export const RideDetailsScreen: React.FC<RideDetailsScreenProps> = ({
                         <h5 className="text-sm font-bold text-black">
                           {ride.dropLocation}
                         </h5>
-                        <p className="text-xs text-neutral-500">{ride.toCity}</p>
+                        <p className="text-xs text-neutral-500">{cleanCityName(ride.toCity)}</p>
                       </div>
                       <span className="text-xs font-bold text-black">
-                        {ride.estimatedArrivalTime || '9:45 AM'}
+                        {ride.estimatedArrivalTime || '—'}
                       </span>
                     </div>
                   </div>
@@ -322,225 +257,16 @@ export const RideDetailsScreen: React.FC<RideDetailsScreenProps> = ({
             </>
           ) : null}
 
-          {/* Star-Based Rating & Driver Reliability Scores Display */}
-          {(activeTab === 'reviews' || activeTab === 'details') && (
-            <div className="p-4.5 rounded-2xl border border-neutral-200/90 bg-white shadow-2xs space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
-                <div>
-                  <h4 className="text-sm font-extrabold text-neutral-900 tracking-tight flex items-center gap-1.5">
-                    <Award className="w-4 h-4 text-orange-500" />
-                    <span>Driver Reliability Score</span>
-                  </h4>
-                  <p className="text-[11px] text-neutral-500">
-                    Pre-booking trust & performance metrics
-                  </p>
-                </div>
-
-                <motion.button
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setShowRateModal(true)}
-                  className="text-xs font-bold text-orange-600 bg-orange-50 hover:bg-orange-100 border border-orange-200 px-3 py-1.5 rounded-xl flex items-center gap-1 transition-colors"
-                >
-                  <Star className="w-3.5 h-3.5 fill-current" />
-                  <span>Rate Driver</span>
-                </motion.button>
+          {/* Review summaries are shown only after a trip is completed and a booking is rated. */}
+          {activeTab === 'reviews' && (
+            <div className="p-4 rounded-2xl border border-neutral-200/90 bg-white shadow-2xs text-center">
+              <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                <Star className="w-5 h-5 fill-current" />
               </div>
-
-              {/* Big Reliability Score Breakdown Display */}
-              <div className="grid grid-cols-12 gap-3 items-center bg-gradient-to-br from-amber-50/60 to-orange-50/60 p-3.5 rounded-2xl border border-amber-200/60">
-                {/* Overall Score Pillar */}
-                <div className="col-span-5 text-center border-r border-amber-200/80 pr-2">
-                  <div className="flex items-center justify-center gap-1 text-3xl font-black text-neutral-900 leading-none">
-                    <span>{ride.driverRating}</span>
-                    <Star className="w-6 h-6 fill-amber-400 text-amber-500" />
-                  </div>
-                  <span className="text-[11px] font-extrabold text-orange-700 block mt-1">
-                    Super Host Driver
-                  </span>
-                  <span className="text-[10px] text-neutral-500 font-medium">
-                    {ride.driverTripsCount} highway trips
-                  </span>
-                </div>
-
-                {/* Score Distribution Bars */}
-                <div className="col-span-7 space-y-1.5 pl-1">
-                  <div className="flex items-center gap-2 text-[10px]">
-                    <span className="w-8 font-bold text-neutral-600">5 ★</span>
-                    <div className="flex-1 h-2 bg-neutral-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-amber-400 rounded-full"
-                        style={{ width: `${fivePercent}%` }}
-                      />
-                    </div>
-                    <span className="w-6 text-right font-medium text-neutral-500">{fivePercent}%</span>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-[10px]">
-                    <span className="w-8 font-bold text-neutral-600">4 ★</span>
-                    <div className="flex-1 h-2 bg-neutral-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-amber-400/80 rounded-full"
-                        style={{ width: `${fourPercent}%` }}
-                      />
-                    </div>
-                    <span className="w-6 text-right font-medium text-neutral-500">{fourPercent}%</span>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-[10px]">
-                    <span className="w-8 font-bold text-neutral-600">3 ★</span>
-                    <div className="flex-1 h-2 bg-neutral-200 rounded-full overflow-hidden">
-                      <div className="h-full bg-amber-400/30 rounded-full" style={{ width: '0%' }} />
-                    </div>
-                    <span className="w-6 text-right font-medium text-neutral-500">0%</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Reliability Sub-Scores Grid */}
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="bg-neutral-50 p-2.5 rounded-xl border border-neutral-150 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-[10px]">
-                      ⏱
-                    </div>
-                    <span className="text-neutral-700 font-semibold text-[11px]">Punctuality</span>
-                  </div>
-                  <span className="font-extrabold text-neutral-900">4.9 ★</span>
-                </div>
-
-                <div className="bg-neutral-50 p-2.5 rounded-xl border border-neutral-150 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px]">
-                      🛡
-                    </div>
-                    <span className="text-neutral-700 font-semibold text-[11px]">Driving Safety</span>
-                  </div>
-                  <span className="font-extrabold text-neutral-900">5.0 ★</span>
-                </div>
-
-                <div className="bg-neutral-50 p-2.5 rounded-xl border border-neutral-150 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-md bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-[10px]">
-                      ✨
-                    </div>
-                    <span className="text-neutral-700 font-semibold text-[11px]">Cleanliness & AC</span>
-                  </div>
-                  <span className="font-extrabold text-neutral-900">4.8 ★</span>
-                </div>
-
-                <div className="bg-neutral-50 p-2.5 rounded-xl border border-neutral-150 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-[10px]">
-                      🤝
-                    </div>
-                    <span className="text-neutral-700 font-semibold text-[11px]">Polite Behavior</span>
-                  </div>
-                  <span className="font-extrabold text-neutral-900">5.0 ★</span>
-                </div>
-              </div>
-
-              {/* Safety & Compliance Verification Badges */}
-              <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200/80 flex items-start gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <div className="text-[11px] leading-tight">
-                  <span className="font-bold text-emerald-950 block">
-                    UberX Verified Driver Identity
-                  </span>
-                  <span className="text-emerald-700 mt-0.5 block font-medium">
-                    Aadhaar ID, Commercial Driving License, and Fastag are verified with zero cancellation records.
-                  </span>
-                </div>
-              </div>
-
-              {/* Filter Tabs for Reviews */}
-              <div className="pt-2">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
-                    Verified Passenger Reviews ({allReviews.length})
-                  </span>
-
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setSelectedFilter('all')}
-                      className={`text-[11px] px-2.5 py-1 rounded-full font-bold transition-colors ${
-                        selectedFilter === 'all'
-                          ? 'bg-neutral-900 text-white'
-                          : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-                      }`}
-                    >
-                      All ({allReviews.length})
-                    </button>
-                    <button
-                      onClick={() => setSelectedFilter('5')}
-                      className={`text-[11px] px-2.5 py-1 rounded-full font-bold transition-colors ${
-                        selectedFilter === '5'
-                          ? 'bg-amber-500 text-white'
-                          : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-                      }`}
-                    >
-                      5 ★ ({ratingFiveCount})
-                    </button>
-                    <button
-                      onClick={() => setSelectedFilter('4')}
-                      className={`text-[11px] px-2.5 py-1 rounded-full font-bold transition-colors ${
-                        selectedFilter === '4'
-                          ? 'bg-amber-500 text-white'
-                          : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-                      }`}
-                    >
-                      4 ★ ({ratingFourCount})
-                    </button>
-                  </div>
-                </div>
-
-                {/* Individual Review Cards */}
-                <div className="space-y-3">
-                  {filteredReviews.map((rv) => (
-                    <div
-                      key={rv.id}
-                      className="p-3 bg-neutral-50 rounded-xl border border-neutral-200/80 text-xs space-y-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-700 font-bold flex items-center justify-center text-[11px] border border-orange-200">
-                            {rv.reviewerName.charAt(0)}
-                          </div>
-                          <div>
-                            <span className="font-bold text-neutral-900 block leading-tight">
-                              {rv.reviewerName}
-                            </span>
-                            <span className="text-[10px] text-neutral-400">
-                              {rv.createdAt} • Verified Passenger
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center text-amber-500 font-bold bg-white px-2 py-0.5 rounded-md border border-neutral-200 shadow-2xs">
-                          <span>{rv.rating}</span>
-                          <span className="ml-0.5">★</span>
-                        </div>
-                      </div>
-
-                      {rv.tags && rv.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {rv.tags.map((tag, idx) => (
-                            <span
-                              key={idx}
-                              className="text-[10px] font-semibold text-orange-700 bg-orange-100/70 px-2 py-0.5 rounded-full"
-                            >
-                              ✓ {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      <p className="text-neutral-700 leading-relaxed font-normal">
-                        "{rv.comment}"
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <h4 className="text-sm font-extrabold text-neutral-900">Reviews unlock after trip completion</h4>
+              <p className="mt-1 text-xs text-neutral-500">
+                Passengers can rate and review the driver only after booking and completing the ride.
+              </p>
             </div>
           )}
         </div>
@@ -562,14 +288,6 @@ export const RideDetailsScreen: React.FC<RideDetailsScreenProps> = ({
 
         <div className="flex items-center gap-2">
           <button
-            onClick={handleOpenChatWithDriver}
-            className="w-11 h-11 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-600 flex items-center justify-center border border-orange-200 transition-colors"
-            title="Chat with driver"
-          >
-            <MessageSquare className="w-5 h-5" />
-          </button>
-
-          <button
             onClick={() => onNavigate('select_seat')}
             id="ride-details-continue-button"
             className="bg-black hover:bg-neutral-800 active:scale-[0.98] text-white font-bold py-3 px-6 rounded-xl text-sm transition-all shadow-md flex items-center gap-1.5"
@@ -580,17 +298,6 @@ export const RideDetailsScreen: React.FC<RideDetailsScreenProps> = ({
         </div>
       </div>
 
-      {/* Rate Driver Modal */}
-      <RateDriverModal
-        isOpen={showRateModal}
-        onClose={() => setShowRateModal(false)}
-        rideId={ride.id}
-        driverId={ride.driverId}
-        driverName={ride.driverName}
-        driverPhoto={ride.driverPhoto}
-        vehicleInfo={`${ride.vehicleMakeModel} (${ride.vehicleRegNumber})`}
-        route={`${ride.fromCity} → ${ride.toCity}`}
-      />
     </div>
   );
 };

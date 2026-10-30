@@ -10,13 +10,19 @@ import {
   UserRole,
   RideStatus,
   TrackingState,
+  LiveRideLocation,
   ChatConversation,
   ChatMessage,
-  Review
+  Review,
+  AdminDashboardStats,
+  AdminRide,
+  AdminVerificationUser,
+  VerificationDocumentType
 } from '../types';
-import { auth } from '../lib/firebase';
+import { app, auth } from '../lib/firebase';
 import { readApiJson } from '../lib/apiJson';
 import { signOut } from 'firebase/auth';
+import { canAccessAdminPortal } from '../lib/adminAccess';
 
 const STORAGE_KEYS = {
   USER: 'uberx_user_v1',
@@ -85,7 +91,7 @@ class UberXStore {
     this.activeRole = this.load(STORAGE_KEYS.ACTIVE_ROLE, 'passenger');
     this.isAuthenticated = false;
     this.rides = [];
-    this.bookings = this.load(STORAGE_KEYS.BOOKINGS, []);
+    this.bookings = [];
     this.safetyContacts = this.load(STORAGE_KEYS.SAFETY_CONTACTS, []);
     this.notifications = this.load(STORAGE_KEYS.NOTIFICATIONS, []);
     this.tickets = this.load(STORAGE_KEYS.TICKETS, []);
@@ -102,6 +108,10 @@ class UberXStore {
     return { Authorization: `Bearer ${await firebaseUser.getIdToken()}` };
   }
 
+  private mergeRides(incoming: Ride[]) {
+    this.rides = [...new Map([...this.rides, ...incoming].map((ride) => [ride.id, ride])).values()];
+  }
+
   public async fetchAvailableRides(filters?: { fromCity?: string; toCity?: string; date?: string }) {
     const headers = await this.authHeaders();
     const params = new URLSearchParams();
@@ -113,37 +123,98 @@ class UberXStore {
     const result = await readApiJson<{ rides?: Ride[]; error?: string }>(response);
     if (!response.ok) throw new Error(result.error || 'Unable to load rides');
     const rides: Ride[] = Array.isArray(result.rides) ? result.rides : [];
-    this.rides = rides;
+    this.mergeRides(rides);
     this.notify();
-    return this.rides;
+    return rides;
+  }
+
+  /**
+   * Route-based ride search. Uses the passenger's real coordinates to check
+   * whether each driver's stored road route passes through the requested segment.
+   * Falls back to name-based matching for rides published without geometry.
+   */
+  public async fetchRidesByRoute(filters: {
+    fromCity: string;
+    toCity: string;
+    fromLat?: number | null;
+    fromLon?: number | null;
+    toLat?: number | null;
+    toLon?: number | null;
+    date?: string;
+    seats?: number;
+  }): Promise<Ride[]> {
+    const headers = await this.authHeaders();
+    const params = new URLSearchParams();
+    params.set('fromCity', filters.fromCity.trim());
+    params.set('toCity',   filters.toCity.trim());
+    if (filters.date?.trim()) params.set('date', filters.date.trim());
+    if (filters.seats) params.set('seats', String(filters.seats));
+    if (typeof filters.fromLat === 'number' && isFinite(filters.fromLat)) params.set('fromLat', String(filters.fromLat));
+    if (typeof filters.fromLon === 'number' && isFinite(filters.fromLon)) params.set('fromLon', String(filters.fromLon));
+    if (typeof filters.toLat === 'number' && isFinite(filters.toLat)) params.set('toLat', String(filters.toLat));
+    if (typeof filters.toLon === 'number' && isFinite(filters.toLon)) params.set('toLon', String(filters.toLon));
+    const response = await fetch(`/api/rides/route-match?${params}`, { headers });
+    const result = await readApiJson<{ rides?: Ride[]; error?: string }>(response);
+    if (!response.ok) throw new Error(result.error || 'Unable to search rides');
+    const rides: Ride[] = Array.isArray(result.rides) ? result.rides : [];
+    this.mergeRides(rides);
+    this.notify();
+    return rides;
+  }
+
+  public async fetchDriverRides() {
+    const userId = auth?.currentUser?.uid;
+    const headers = await this.authHeaders();
+    const response = await fetch('/api/driver/rides', { headers });
+    const result = await readApiJson<{ rides?: Ride[]; error?: string }>(response);
+    if (!response.ok) throw new Error(result.error || 'Unable to load your rides');
+    const rides: Ride[] = Array.isArray(result.rides) ? result.rides : [];
+    if (!userId || auth?.currentUser?.uid !== userId || this.user.id !== userId) return [];
+    this.rides = [...this.rides.filter((ride) => ride.driverId !== userId), ...rides];
+    this.notify();
+    return rides;
+  }
+
+  public async fetchRideById(rideId: string): Promise<Ride> {
+    const firebaseUser = auth?.currentUser;
+    if (!firebaseUser) throw new Error('Sign in to view this ride');
+    const send = async (forceRefresh: boolean) => fetch(`/api/rides/${encodeURIComponent(rideId)}`, {
+      headers: { Authorization: `Bearer ${await firebaseUser.getIdToken(forceRefresh)}` }
+    });
+    let response = await send(false);
+    if (response.status === 401) response = await send(true);
+    const result = await readApiJson<{ ride?: Ride; error?: string }>(response);
+    if (!response.ok || !result.ride) throw new Error(result.error || 'Unable to load this ride');
+    this.rides = [result.ride, ...this.rides.filter((ride) => ride.id !== result.ride!.id)];
+    this.notify();
+    return result.ride;
+  }
+
+  public async fetchMyBookings() {
+    const userId = auth?.currentUser?.uid;
+    const headers = await this.authHeaders();
+    const response = await fetch('/api/bookings', { headers });
+    const result = await readApiJson<{ bookings?: Booking[]; error?: string }>(response);
+    if (!response.ok) throw new Error(result.error || 'Unable to load bookings');
+    if (!userId || auth?.currentUser?.uid !== userId || this.user.id !== userId) return [];
+    this.bookings = Array.isArray(result.bookings) ? result.bookings : [];
+    this.notify();
+    return this.bookings;
   }
 
   public async syncWithBackend() {
     try {
       const firebaseUser = auth?.currentUser;
       if (!firebaseUser) return;
-      const authorization = { Authorization: `Bearer ${await firebaseUser.getIdToken()}` };
-      const [rideResponse, driverRideResponse, bookingResponse] = await Promise.all([
-        fetch('/api/rides', { headers: authorization }),
-        fetch('/api/driver/rides', { headers: authorization }),
-        fetch('/api/bookings', { headers: authorization })
-      ]);
-      const rideData = rideResponse.ok ? await rideResponse.json() : { rides: [] };
-      const driverRideData = driverRideResponse.ok ? await driverRideResponse.json() : { rides: [] };
-      const bookingData = bookingResponse.ok ? await bookingResponse.json() : { bookings: [] };
-      const allRides: Ride[] = [...(rideData.rides || []), ...(driverRideData.rides || [])];
-      this.rides = [...new Map(allRides.map((ride) => [ride.id, ride])).values()];
-      this.bookings = Array.isArray(bookingData.bookings) ? bookingData.bookings : this.bookings;
-      this.save(STORAGE_KEYS.BOOKINGS, this.bookings);
-      this.notify();
-    } catch {
-      // Graceful offline fallback
+      await Promise.all([this.fetchDriverRides(), this.fetchMyBookings()]);
+    } catch (error) {
+      console.error('Unable to sync account data with the database', error);
     }
   }
 
   private load<T>(key: string, defaultValue: T): T {
     try {
-      const stored = localStorage.getItem(key);
+      const stored = sessionStorage.getItem(key);
       if (stored) {
         return JSON.parse(stored);
       }
@@ -155,7 +226,7 @@ class UberXStore {
 
   private save(key: string, value: any) {
     try {
-      localStorage.setItem(key, JSON.stringify(value));
+      sessionStorage.setItem(key, JSON.stringify(value));
     } catch (e) {
       console.warn('Store save error:', e);
     }
@@ -174,6 +245,19 @@ class UberXStore {
 
   // Auth Operations
   public setAuthenticatedUser(user: User) {
+    if (this.user.id && this.user.id !== user.id) {
+      this.activeRole = 'passenger';
+      this.rides = [];
+      this.bookings = [];
+      this.safetyContacts = [];
+      this.notifications = [];
+      this.tickets = [];
+      this.drivers = [];
+      this.vehicles = [];
+      this.allUsers = [];
+      this.conversations = [];
+      sessionStorage.removeItem(STORAGE_KEYS.ACTIVE_ROLE);
+    }
     this.user = user;
     this.isAuthenticated = true;
     this.save(STORAGE_KEYS.USER, user);
@@ -184,82 +268,175 @@ class UberXStore {
 
   public logout() {
     this.isAuthenticated = false;
+    this.user = EMPTY_USER;
+    this.activeRole = 'passenger';
+    this.rides = [];
+    this.bookings = [];
+    this.safetyContacts = [];
+    this.notifications = [];
+    this.tickets = [];
+    this.drivers = [];
+    this.vehicles = [];
+    this.allUsers = [];
+    this.conversations = [];
     this.save(STORAGE_KEYS.IS_AUTHENTICATED, false);
+    sessionStorage.removeItem(STORAGE_KEYS.USER);
+    sessionStorage.removeItem(STORAGE_KEYS.ACTIVE_ROLE);
     if (auth) void signOut(auth).catch((error) => console.error('Unable to sign out', error));
     this.notify();
   }
 
   public canProvideRide(): boolean {
-    return Boolean(this.user.rcNumber && this.user.rcVerified);
+    return this.user.riderVerificationStatus === 'verified' &&
+      this.user.driverVerificationStatus === 'verified' &&
+      this.user.verificationDocuments?.aadhaarSelfie?.status === 'verified' &&
+      this.user.verificationDocuments?.pan?.status === 'verified' &&
+      this.user.verificationDocuments?.rcSelfie?.status === 'verified';
   }
 
-  public updateVerificationDocs(data: {
-    aadhaarNumber?: string;
-    aadhaarVerified?: boolean;
-    aadhaarDoc?: string;
-    panNumber?: string;
-    panVerified?: boolean;
-    panDoc?: string;
-    rcNumber?: string | null;
-    rcVerified?: boolean;
-    rcDoc?: string | null;
-  }) {
-    const updated = { ...this.user };
-    if (data.aadhaarNumber !== undefined) updated.aadhaarNumber = data.aadhaarNumber;
-    if (data.aadhaarVerified !== undefined) updated.aadhaarVerified = data.aadhaarVerified;
-    if (data.aadhaarDoc !== undefined) updated.aadhaarDoc = data.aadhaarDoc;
-
-    if (data.panNumber !== undefined) updated.panNumber = data.panNumber;
-    if (data.panVerified !== undefined) updated.panVerified = data.panVerified;
-    if (data.panDoc !== undefined) updated.panDoc = data.panDoc;
-
-    if (data.rcNumber !== undefined) updated.rcNumber = data.rcNumber || undefined;
-    if (data.rcVerified !== undefined) updated.rcVerified = data.rcVerified;
-    if (data.rcDoc !== undefined) updated.rcDoc = data.rcDoc || undefined;
-
-    // RC is optional: if RC is uploaded & verified, user can provide rides; otherwise can only take a ride
-    updated.canProvideRide = Boolean(updated.rcNumber && updated.rcVerified);
-
-    this.user = updated;
-    this.save(STORAGE_KEYS.USER, this.user);
-    this.notify();
-
-    // Sync to Express Backend API
-    fetch('/api/user/verify-document', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        documentType: data.rcNumber ? 'rc' : data.aadhaarNumber ? 'aadhaar' : 'pan',
-        documentNumber: data.rcNumber || data.aadhaarNumber || data.panNumber,
-        action: 'upload'
-      })
-    }).catch(() => {});
-  }
-
-  public removeRC() {
+  public async submitVerificationDocuments(
+    files: Partial<Record<VerificationDocumentType, File>>,
+    onProgress?: (progress: number, current: number, total: number) => void
+  ) {
+    const firebaseUser = auth?.currentUser;
+    if (!app || !firebaseUser || firebaseUser.uid !== this.user.id) throw new Error('Sign in before uploading documents');
+    const selected = Object.entries(files).filter((entry): entry is [VerificationDocumentType, File] => entry[1] instanceof File);
+    if (!selected.some(([type]) => type === 'aadhaarSelfie') || !selected.some(([type]) => type === 'pan')) {
+      throw new Error('Upload both the Aadhaar photo with your face visible and the PAN card image.');
+    }
+    for (const [, file] of selected) {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size < 1 || file.size > 5 * 1024 * 1024) {
+        throw new Error('Choose JPEG, PNG, or WebP images under 5 MB each.');
+      }
+    }
+    const body = new FormData();
+    for (const [type, file] of selected) body.append(type, file, file.name);
+    const headers = await this.authHeaders();
+    const result = await new Promise<{
+      error?: string;
+      riderVerificationStatus?: User['riderVerificationStatus'];
+      driverVerificationStatus?: User['driverVerificationStatus'];
+      submittedTypes?: VerificationDocumentType[];
+    }>((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open('POST', '/api/user/verification-documents');
+      request.setRequestHeader('Authorization', headers.Authorization);
+      request.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) onProgress?.(Math.min(95, Math.floor(event.loaded / event.total * 95)), 1, 1);
+      });
+      request.addEventListener('error', () => reject(new Error('Upload connection failed. Check your network and try again.')));
+      request.addEventListener('timeout', () => reject(new Error('Upload timed out. Please retry on a stable connection.')));
+      request.addEventListener('load', () => {
+        let response: typeof result;
+        try {
+          response = JSON.parse(request.responseText) as typeof result;
+        } catch {
+          reject(new Error('The upload server returned an invalid response. Please retry.'));
+          return;
+        }
+        if (request.status < 200 || request.status >= 300) {
+          reject(new Error(response.error || 'Unable to upload identity documents'));
+          return;
+        }
+        resolve(response);
+      });
+      request.timeout = 120_000;
+      request.send(body);
+    });
+    onProgress?.(100, selected.length, selected.length);
+    if (auth?.currentUser?.uid !== firebaseUser.uid || this.user.id !== firebaseUser.uid) {
+      throw new Error('Your signed-in account changed during upload. Sign in again before submitting.');
+    }
     this.user = {
       ...this.user,
-      rcNumber: undefined,
+      riderVerificationStatus: result.riderVerificationStatus || 'pending',
+      verificationStatus: 'pending',
+      driverVerificationStatus: result.driverVerificationStatus || (files.rcSelfie ? 'pending' : this.user.driverVerificationStatus),
       rcVerified: false,
-      rcDoc: undefined,
-      canProvideRide: false
+      verificationDocuments: {
+        ...this.user.verificationDocuments,
+        ...Object.fromEntries((result.submittedTypes || selected.map(([type]) => type)).map((type) => [type, { status: 'pending' }]))
+      }
     };
+    this.save(STORAGE_KEYS.USER, this.user);
     if (this.activeRole === 'driver') {
       this.activeRole = 'passenger';
       this.save(STORAGE_KEYS.ACTIVE_ROLE, 'passenger');
     }
-    this.save(STORAGE_KEYS.USER, this.user);
     this.notify();
+  }
 
-    // Sync to Express Backend API
-    fetch('/api/user/verify-document', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ documentType: 'rc', action: 'remove' })
-    }).catch(() => {});
+  public async fetchAdminVerificationUsers(cursor?: string) {
+    const headers = await this.authHeaders();
+    const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+    const response = await fetch(`/api/admin/verifications${query}`, { headers });
+    const result = await readApiJson<{ users?: AdminVerificationUser[]; nextCursor?: string | null; error?: string }>(response);
+    if (!response.ok) throw new Error(result.error || 'Unable to load verification requests');
+    return { users: result.users || [], nextCursor: result.nextCursor || undefined };
+  }
+
+  public async fetchAdminDriveStatus() {
+    const headers = await this.authHeaders();
+    const response = await fetch('/api/admin/drive/status', { headers });
+    const result = await readApiJson<{
+      configured?: boolean;
+      connected?: boolean;
+      email?: string;
+      setupHelp?: string;
+      error?: string;
+    }>(response);
+    if (!response.ok) throw new Error(result.error || 'Unable to check Google Drive connection');
+    return result;
+  }
+
+  public async connectAdminGoogleDrive() {
+    const headers = await this.authHeaders();
+    const response = await fetch('/api/admin/drive/connect', { method: 'POST', headers });
+    const result = await readApiJson<{ url?: string; error?: string }>(response);
+    if (!response.ok || !result.url) throw new Error(result.error || 'Unable to start Google Drive authorization');
+    window.location.assign(result.url);
+  }
+
+  public async fetchAdminOverview() {
+    const headers = await this.authHeaders();
+    const response = await fetch('/api/admin/overview', { headers });
+    const result = await readApiJson<{ stats?: AdminDashboardStats; error?: string }>(response);
+    if (!response.ok || !result.stats) throw new Error(result.error || 'Unable to load admin dashboard');
+    return result.stats;
+  }
+
+  public async fetchAdminRides(cursor?: string) {
+    const headers = await this.authHeaders();
+    const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+    const response = await fetch(`/api/admin/rides${query}`, { headers });
+    const result = await readApiJson<{ rides?: AdminRide[]; nextCursor?: string | null; error?: string }>(response);
+    if (!response.ok) throw new Error(result.error || 'Unable to load rides');
+    return { rides: result.rides || [], nextCursor: result.nextCursor || undefined };
+  }
+
+  public async fetchAdminDocumentUrl(userId: string, type: VerificationDocumentType) {
+    const headers = await this.authHeaders();
+    const response = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/documents/${type}`, { headers });
+    if (!response.ok) {
+      const result = await readApiJson<{ error?: string }>(response);
+      throw new Error(result.error || 'Unable to open identity image');
+    }
+    return URL.createObjectURL(await response.blob());
+  }
+
+  public async reviewUserVerification(userId: string, kind: 'rider' | 'driver', status: 'verified' | 'rejected', reason?: string) {
+    const headers = await this.authHeaders();
+    const response = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/verification`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind, status, ...(reason ? { reason } : {}) })
+    });
+    const result = await readApiJson<{ error?: string }>(response);
+    if (!response.ok) throw new Error(result.error || 'Unable to review identity documents');
   }
 
   public setActiveRole(role: 'passenger' | 'driver' | 'admin'): boolean {
+    if (role === 'admin' && !canAccessAdminPortal(this.user.email)) return false;
     if (role === 'driver' && !this.canProvideRide()) {
       // Cannot become driver without uploading RC!
       return false;
@@ -276,18 +453,60 @@ class UberXStore {
     this.notify();
   }
 
+  /** Upload a profile photo (converts file to base64, sends to backend, updates local user). */
+  public async uploadProfilePhoto(file: File): Promise<string> {
+    if (!file.type.startsWith('image/') || file.size > 800_000) {
+      throw new Error('Choose a PNG or JPEG image under 800 KB');
+    }
+    // Resize to max 400×400 before encoding
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const size = 400;
+          const scale = Math.min(1, size / Math.max(img.naturalWidth, img.naturalHeight));
+          const canvas = document.createElement('canvas');
+          canvas.width  = Math.round(img.naturalWidth  * scale);
+          canvas.height = Math.round(img.naturalHeight * scale);
+          canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.onerror = () => reject(new Error('Unable to load image'));
+        img.src = reader.result as string;
+      };
+      reader.onerror = () => reject(new Error('Unable to read file'));
+      reader.readAsDataURL(file);
+    });
+    const firebaseUser = auth?.currentUser;
+    if (!firebaseUser) throw new Error('Sign in to update your photo');
+    const res = await fetch('/api/user/photo', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${await firebaseUser.getIdToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo: dataUrl })
+    });
+    const result = await readApiJson<{ profilePhoto?: string; error?: string }>(res);
+    if (!res.ok) throw new Error(result.error || 'Unable to save photo');
+    this.user = { ...this.user, profilePhoto: dataUrl, updatedAt: new Date().toISOString() };
+    this.save(STORAGE_KEYS.USER, this.user);
+    this.notify();
+    return dataUrl;
+  }
+
   // Update local views only after the server confirms payment.
   public recordConfirmedBooking(booking: Booking) {
-    if (this.bookings.some((existing) => existing.id === booking.id)) return;
+    if (this.bookings.some((existing) => existing.id === booking.id)) {
+      this.bookings = this.bookings.map((existing) => existing.id === booking.id ? booking : existing);
+    } else {
+      this.bookings = [booking, ...this.bookings];
+    }
     const ride = this.rides.find((item) => item.id === booking.rideId);
     if (ride) {
       ride.occupiedSeats = [...new Set([...ride.occupiedSeats, ...booking.selectedSeats])];
       ride.availableSeats = Math.max(0, ride.totalSeats - ride.occupiedSeats.length);
-      this.save(STORAGE_KEYS.RIDES, this.rides);
     }
-    this.bookings = [booking, ...this.bookings];
-    this.save(STORAGE_KEYS.BOOKINGS, this.bookings);
     this.notify();
+    void this.syncWithBackend();
   }
 
   // Cancel Booking
@@ -308,7 +527,6 @@ class UberXStore {
       ride.availableSeats = Math.min(ride.totalSeats, ride.totalSeats - ride.occupiedSeats.length);
       this.save(STORAGE_KEYS.RIDES, this.rides);
     }
-    this.save(STORAGE_KEYS.BOOKINGS, this.bookings);
     this.addNotification({
       title: 'Booking Cancelled',
       message: updatedBooking.paymentStatus === 'REFUND_PENDING'
@@ -318,10 +536,38 @@ class UberXStore {
     });
   }
 
+  public async confirmBookingPayment(bookingId: string) {
+    const firebaseUser = auth?.currentUser;
+    if (!firebaseUser) throw new Error('Sign in before confirming payment');
+    if (firebaseUser.uid !== this.user.id) throw new Error('Your signed-in account changed. Refresh the page and try again.');
+    const send = async (forceRefresh: boolean) => fetch(`/api/bookings/${encodeURIComponent(bookingId)}/payment-confirmation`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${await firebaseUser.getIdToken(forceRefresh)}` }
+    });
+    let response = await send(false);
+    if (response.status === 401) response = await send(true);
+    const result = await readApiJson<{ booking?: Booking; error?: string }>(response);
+    if (!response.ok || !result.booking) throw new Error(result.error || 'Unable to confirm payment');
+    this.rides = this.rides.map((ride) => ride.id !== result.booking!.rideId ? ride : {
+      ...ride,
+      passengerBookings: (ride.passengerBookings || []).map((booking) => booking.id === bookingId ? result.booking! : booking)
+    });
+    this.save(STORAGE_KEYS.RIDES, this.rides);
+    this.notify();
+  }
+
   // Driver Operations
   public async createRide(rideData: {
     fromCity: string;
     toCity: string;
+    /** Latitude of origin (from location picker) */
+    fromLat?: number | null;
+    /** Longitude of origin */
+    fromLon?: number | null;
+    /** Latitude of destination */
+    toLat?: number | null;
+    /** Longitude of destination */
+    toLon?: number | null;
     pickupLocation: string;
     dropLocation: string;
     departureDate: string;
@@ -331,21 +577,23 @@ class UberXStore {
     luggageCapacity: string;
     vehicleMakeModel: string;
     vehicleRegNumber: string;
+    driverUpiQrDataUrl?: string;
+    ridePreferences?: string[];
   }): Promise<Ride> {
     const firebaseUser = auth?.currentUser;
     if (!firebaseUser) throw new Error('Sign in before publishing a ride');
-    const response = await fetch('/api/rides', {
+    const publish = (token: string) => fetch('/api/rides', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${await firebaseUser.getIdToken()}`,
-        'Content-Type': 'application/json'
-      },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(rideData)
     });
+    let response = await publish(await firebaseUser.getIdToken());
+    if (response.status === 401) response = await publish(await firebaseUser.getIdToken(true));
     const result = await readApiJson<{ ride: Ride; error?: string }>(response);
     if (!response.ok) throw new Error(result.error || 'Unable to publish ride');
     const newRide = result.ride as Ride;
     this.rides = [newRide, ...this.rides.filter((ride) => ride.id !== newRide.id)];
+    this.save(STORAGE_KEYS.RIDES, this.rides);
     this.notify();
     return newRide;
   }
@@ -372,6 +620,36 @@ class UberXStore {
       }
       this.notify();
     }
+  }
+
+  public async updateRideLiveLocation(rideId: string, latitude: number, longitude: number) {
+    const firebaseUser = auth?.currentUser;
+    if (!firebaseUser) throw new Error('Sign in before sharing ride location');
+    const send = async (forceRefresh: boolean) => fetch(`/api/rides/${encodeURIComponent(rideId)}/location`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${await firebaseUser.getIdToken(forceRefresh)}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ latitude, longitude })
+    });
+    let response = await send(false);
+    if (response.status === 401) response = await send(true);
+    const result = await readApiJson<{ error?: string }>(response);
+    if (!response.ok) throw new Error(result.error || 'Unable to share driver location');
+  }
+
+  public async fetchRideLiveLocation(rideId: string): Promise<LiveRideLocation | null> {
+    const firebaseUser = auth?.currentUser;
+    if (!firebaseUser) throw new Error('Sign in to view ride location');
+    const send = async (forceRefresh: boolean) => fetch(`/api/rides/${encodeURIComponent(rideId)}/location`, {
+      headers: { Authorization: `Bearer ${await firebaseUser.getIdToken(forceRefresh)}` }
+    });
+    let response = await send(false);
+    if (response.status === 401) response = await send(true);
+    const result = await readApiJson<{ location: LiveRideLocation | null; error?: string }>(response);
+    if (!response.ok) throw new Error(result.error || 'Unable to load ride location');
+    return result.location;
   }
 
   public addSafetyContact(contact: Omit<SafetyContact, 'id' | 'userId'>) {
@@ -487,15 +765,37 @@ class UberXStore {
     this.notify();
   }
 
-  public addReview(params: {
+  public async addReview(params: {
     rideId: string;
     driverId: string;
     rating: number;
     comment: string;
     tags: string[];
     bookingId?: string;
-  }) {
-    const review: Review = {
+  }): Promise<Review> {
+    const firebaseUser = auth?.currentUser;
+    if (!firebaseUser) throw new Error('Sign in before submitting a rating');
+
+    const response = await fetch('/api/reviews', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${await firebaseUser.getIdToken()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        rideId: params.rideId,
+        driverId: params.driverId,
+        rating: params.rating,
+        comment: params.comment,
+        tags: params.tags,
+        bookingId: params.bookingId
+      })
+    });
+
+    const result = await readApiJson<{ review?: Review; booking?: Booking; error?: string }>(response);
+    if (!response.ok) throw new Error(result.error || 'Unable to submit your review');
+
+    const review = result.review || {
       id: `rev_${Date.now()}`,
       rideId: params.rideId,
       reviewerId: this.user.id,
@@ -505,54 +805,29 @@ class UberXStore {
       rating: params.rating,
       comment: params.comment,
       tags: params.tags,
-      createdAt: 'Just now'
-    };
+      createdAt: new Date().toISOString()
+    } as Review;
 
-    // Add review to the matching ride
     const ride = this.rides.find((r) => r.id === params.rideId);
     if (ride) {
       ride.reviews = [review, ...(ride.reviews || [])];
-      // Recalculate average rating
-      const allRatings = ride.reviews.map((r) => r.rating);
-      const avg = allRatings.reduce((sum, r) => sum + r, 0) / allRatings.length;
-      ride.driverRating = Number(avg.toFixed(1));
+      ride.driverRating = Number((ride.driverRating || 0) > 0 ? ride.driverRating : params.rating);
+      this.save(STORAGE_KEYS.RIDES, this.rides);
     }
 
-    // Also update driver model if present
-    const driver = this.drivers.find((d) => d.id === params.driverId);
-    if (driver) {
-      driver.rating = Number(((driver.rating * driver.totalTrips + params.rating) / (driver.totalTrips + 1)).toFixed(1));
-      driver.totalTrips += 1;
-      this.save(STORAGE_KEYS.DRIVERS, this.drivers);
-    }
-
-    // Update matching booking if any
-    if (params.bookingId) {
+    if (result.booking) {
+      this.bookings = this.bookings.map((booking) => booking.id === result.booking!.id ? { ...booking, ...result.booking! } : booking);
+    } else if (params.bookingId) {
       const booking = this.bookings.find((b) => b.id === params.bookingId);
       if (booking) {
         booking.isRated = true;
+        booking.hasRated = true;
         booking.rating = params.rating;
+        booking.ratingGiven = params.rating;
         booking.reviewComment = params.comment;
         booking.reviewTags = params.tags;
-        this.save(STORAGE_KEYS.BOOKINGS, this.bookings);
-      }
-    } else {
-      // Find latest completed or unrated booking for this driver
-      const latestBooking = this.bookings.find(
-        (b) => (b.rideId === params.rideId || (driver?.fullName && b.driverName?.toLowerCase().includes(driver.fullName.toLowerCase()))) && !b.isRated
-      );
-      if (latestBooking) {
-        latestBooking.isRated = true;
-        latestBooking.hasRated = true;
-        latestBooking.rating = params.rating;
-        latestBooking.ratingGiven = params.rating;
-        latestBooking.reviewComment = params.comment;
-        latestBooking.reviewTags = params.tags;
-        this.save(STORAGE_KEYS.BOOKINGS, this.bookings);
       }
     }
-
-    this.save(STORAGE_KEYS.RIDES, this.rides);
 
     this.addNotification({
       title: 'Review Submitted!',
@@ -599,7 +874,7 @@ class UberXStore {
       } else if (lower.includes('fast') || lower.includes('speed') || lower.includes('slow')) {
         replyText = `Always maintaining safe expressway speed limits under 80 km/h.`;
       } else if (lower.includes('hi') || lower.includes('hello') || lower.includes('hey')) {
-        replyText = `Hello Priya! Vehicle is sanitized and ready for pickup.`;
+        replyText = `Hello! Vehicle is sanitized and ready for pickup.`;
       }
 
       const driverMsg: ChatMessage = {
@@ -615,6 +890,64 @@ class UberXStore {
       this.save(STORAGE_KEYS.CONVERSATIONS, this.conversations);
       this.notify();
     }, 1200);
+  }
+
+  private async bookingChatRequest<T>(url: string, method: 'GET' | 'POST', body?: unknown): Promise<T> {
+    const firebaseUser = auth?.currentUser;
+    if (!firebaseUser) throw new Error('Sign in before opening booking chat');
+    const send = async (forceRefresh: boolean) => fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${await firebaseUser.getIdToken(forceRefresh)}`,
+        ...(body ? { 'Content-Type': 'application/json' } : {})
+      },
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+    let response = await send(false);
+    if (response.status === 401) response = await send(true);
+    const result = await readApiJson<T & { error?: string }>(response);
+    if (!response.ok) throw new Error(result.error || 'Booking chat request failed');
+    return result as T;
+  }
+
+  public async fetchBookingConversation(bookingId: string): Promise<ChatConversation> {
+    const result = await this.bookingChatRequest<{
+      conversation: Omit<ChatConversation, 'messages'> & {
+        messages: Array<Omit<ChatMessage, 'sender'> & { senderId: string }>;
+      };
+    }>(`/api/bookings/${encodeURIComponent(bookingId)}/messages`, 'GET');
+    const currentUserId = auth?.currentUser?.uid;
+    const conversation: ChatConversation = {
+      ...result.conversation,
+      messages: result.conversation.messages.map((message) => ({
+        id: message.id,
+        text: message.text,
+        time: message.time,
+        timestamp: message.timestamp,
+        sender: message.senderId === currentUserId ? 'user' : 'driver'
+      }))
+    };
+    this.conversations = [conversation, ...this.conversations.filter((item) => item.id !== conversation.id)];
+    this.notify();
+    return conversation;
+  }
+
+  public async sendBookingMessage(bookingId: string, text: string): Promise<void> {
+    const result = await this.bookingChatRequest<{
+      message: Omit<ChatMessage, 'sender'> & { senderId: string };
+    }>(`/api/bookings/${encodeURIComponent(bookingId)}/messages`, 'POST', { text });
+    const conversation = this.conversations.find((item) => item.id === bookingId);
+    if (!conversation) return;
+    conversation.messages = [...conversation.messages, {
+      id: result.message.id,
+      text: result.message.text,
+      time: result.message.time,
+      timestamp: result.message.timestamp,
+      sender: 'user'
+    }];
+    conversation.lastMessage = result.message.text;
+    conversation.lastMessageTime = result.message.time;
+    this.notify();
   }
 
   public markConversationRead(conversationId: string) {
@@ -646,7 +979,7 @@ class UberXStore {
         lastMessageTime: 'Just now',
         unreadCount: 0,
         isOnline: true,
-        rideRoute: route || 'Bangalore → Mysore',
+        rideRoute: route || '',
         messages: [
           {
             id: `msg_init_${Date.now()}`,
