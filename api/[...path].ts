@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createExpressApp } from '../backend/app';
 
 export const config = {
   maxDuration: 10
@@ -16,7 +17,6 @@ function sendJson(res: ServerResponse, status: number, body: object) {
 async function loadApp() {
   if (app || loadError) return;
   try {
-    const { createExpressApp } = await import('../backend/app');
     app = createExpressApp();
   } catch (error) {
     loadError = error instanceof Error ? error.message : 'Failed to start the API function';
