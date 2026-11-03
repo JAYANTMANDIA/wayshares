@@ -11,7 +11,7 @@ import {
 } from 'firebase/auth';
 import { AppScreen } from '../types';
 import { store } from '../services/store';
-import { auth } from '../lib/firebase';
+import { auth, firebaseConfigError } from '../lib/firebase';
 import {
   firebaseErrorMessage,
   saveFirebaseUserProfile,
@@ -64,7 +64,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onNavigate }) => {
         return;
       }
       if (!auth) {
-        setError('Firebase is not configured. Add the Firebase settings to .env.local.');
+        setError(firebaseConfigError);
         return;
       }
       await useSessionAuthPersistence();
@@ -156,7 +156,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onNavigate }) => {
       return;
     }
     if (!auth) {
-      setError('Firebase is not configured. Add the Firebase settings to .env.local.');
+      setError(firebaseConfigError);
       return;
     }
     setIsBusy(true);

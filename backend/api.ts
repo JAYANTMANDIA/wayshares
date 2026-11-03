@@ -4,8 +4,8 @@ import type { Express, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { google } from 'googleapis';
 import { Timestamp } from 'firebase-admin/firestore';
-import { adminAuth, db, FieldValue, firebaseAdminInitError } from './firebaseAdmin';
-import { searchLocations, getIndexStatus, loadLocationIndex } from './locationIndex';
+import { adminAuth, db, FieldValue, firebaseAdminInitError } from './firebaseAdmin.js';
+import { searchLocations, getIndexStatus, loadLocationIndex } from './locationIndex.js';
 import {
   geocodeLocation,
   fetchRouteFromOSRM,
@@ -14,7 +14,7 @@ import {
   calculateSegmentFare,
   MAX_SNAP_KM,
   MAX_DETOUR_KM,
-} from './routeService';
+} from './routeService.js';
 
 type AuthRequest = Request & { uid: string; authEmail?: string; authPhone?: string; authEmailVerified?: boolean };
 

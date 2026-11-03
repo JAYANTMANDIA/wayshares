@@ -9,14 +9,14 @@ import {
 } from 'firebase/auth';
 import { User } from '../types';
 import { readApiJson } from './apiJson';
-import { auth, db } from './firebase';
+import { auth, db, firebaseConfigError } from './firebase';
 
 const EMAIL_LINK_KEY = 'uberx_email_link';
 const EMAIL_NAME_KEY = 'uberx_email_name';
 
 function requireFirebaseAuth() {
   if (!auth || !db) {
-    throw new Error('Firebase is not configured. Add the Firebase settings to .env.local.');
+    throw new Error(firebaseConfigError);
   }
   return { auth, db };
 }

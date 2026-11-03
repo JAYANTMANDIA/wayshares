@@ -1,9 +1,30 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import {defineConfig, loadEnv} from 'vite';
 
-export default defineConfig(() => {
+const firebaseEnvKeys = [
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_AUTH_DOMAIN',
+  'VITE_FIREBASE_PROJECT_ID',
+  'VITE_FIREBASE_STORAGE_BUCKET',
+  'VITE_FIREBASE_MESSAGING_SENDER_ID',
+  'VITE_FIREBASE_APP_ID'
+];
+
+const isConfiguredValue = (value: string | undefined) => {
+  const trimmedValue = value?.trim();
+  if (!trimmedValue) return false;
+  return !/^(your[-_ ]|replace[-_ ]|paste|placeholder)/i.test(trimmedValue);
+};
+
+export default defineConfig(({ mode, command }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const missingFirebaseEnv = firebaseEnvKeys.filter(key => !isConfiguredValue(env[key]));
+  if (command === 'build' && missingFirebaseEnv.length) {
+    throw new Error(`Cannot build the frontend. Set valid Firebase client variables: ${missingFirebaseEnv.join(', ')}.`);
+  }
+
   return {
     plugins: [react(), tailwindcss()],
     resolve: {

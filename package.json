@@ -24,7 +24,7 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "firebase": "^12.19.0",
-    "firebase-admin": "^14.5.0",
+    "firebase-admin": "^13.10.0",
     "googleapis": "^185.0.0",
     "indian-cities-json": "^2.0.0",
     "leaflet": "^1.9.4",

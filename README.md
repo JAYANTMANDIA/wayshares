@@ -35,6 +35,10 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
 VITE_FIREBASE_APP_ID=your-app-id
 ```
 
+Vite reads these values when the dev server starts or the frontend builds. Restart `npm run dev` after changing `.env.local`. For Vercel, add all six `VITE_FIREBASE_*` variables to the project's Environment Variables for the relevant environments, then redeploy; `.env.local` is not uploaded to Vercel.
+
+Vercel routes `/api/*` requests through `api/[...path].ts` automatically; do not add an `/api` rewrite to `vercel.json`, since that can prevent API handlers from receiving the requested route.
+
 Create `.env` for server-only configuration. Never use a `VITE_` prefix for secrets:
 
 ```dotenv

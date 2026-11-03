@@ -1,5 +1,5 @@
 import express from 'express';
-import { registerApi } from './api';
+import { registerApi } from './api.js';
 
 export function createExpressApp() {
   const app = express();
